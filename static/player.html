@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Christmas Quiz - Player</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body { font-family: Arial, sans-serif; background: #0b1d2b; color: #f4f4f4; margin: 0; padding: 0; }
+    header { background: #1f3b4d; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; }
+    main { padding: 16px; }
+    .card { background: #123047; border-radius: 8px; padding: 16px; margin-bottom: 12px; }
+    .input-row { display: flex; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+    button { background: #e13f3f; border: none; color: white; padding: 10px 14px; border-radius: 6px; cursor: pointer; }
+    button:disabled { opacity: 0.6; cursor: not-allowed; }
+    input, select { padding: 10px; border-radius: 6px; border: 1px solid #2f4c62; background: #0f2639; color: white; }
+    .options { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 8px; }
+    .option { background: #1f3b4d; border: 1px solid #2f536d; padding: 12px; border-radius: 8px; cursor: pointer; }
+    .option.selected { border-color: #e13f3f; box-shadow: 0 0 0 2px #e13f3f55; }
+    .media img { max-width: 100%; border-radius: 8px; }
+    .timer { font-weight: bold; }
+  </style>
+</head>
+<body>
+<header>
+  <div>Christmas Quiz</div>
+  <div id="player-label"></div>
+</header>
+<main>
+  <div class="card">
+    <div class="input-row">
+      <input id="session-id" placeholder="Session code (8 chars)">
+      <input id="player-name" placeholder="Your name">
+      <select id="reconnect-select">
+        <option value="">Reconnect as...</option>
+      </select>
+      <button id="join-btn">Join</button>
+    </div>
+    <small id="status"></small>
+  </div>
+
+  <div class="card" id="question-card" style="display:none;">
+    <div id="question-text"></div>
+    <div class="media" id="media"></div>
+    <div class="timer" id="timer"></div>
+    <div id="answer-area"></div>
+    <button id="submit-btn" style="margin-top:12px;">Submit</button>
+  </div>
+</main>
+
+<script>
+  let socket;
+  let playerId = null;
+  let sessionId = null;
+  let latestState = null;
+  let selectedAnswer = null;
+
+  const statusEl = document.getElementById("status");
+  const joinBtn = document.getElementById("join-btn");
+  const questionCard = document.getElementById("question-card");
+  const questionText = document.getElementById("question-text");
+  const mediaEl = document.getElementById("media");
+  const timerEl = document.getElementById("timer");
+  const answerArea = document.getElementById("answer-area");
+  const submitBtn = document.getElementById("submit-btn");
+  const reconnectSelect = document.getElementById("reconnect-select");
+  const playerLabel = document.getElementById("player-label");
+
+  joinBtn.onclick = () => {
+    sessionId = document.getElementById("session-id").value.trim();
+    const name = document.getElementById("player-name").value.trim();
+    const reconnectAs = reconnectSelect.value || null;
+    if (!sessionId) {
+      statusEl.textContent = "Enter a session code";
+      return;
+    }
+    startSocket({name, player_id: reconnectAs});
+  };
+
+  submitBtn.onclick = () => {
+    if (!socket || socket.readyState !== WebSocket.OPEN || !latestState?.question) return;
+    const payload = {type: "answer", player_id: playerId, answer: selectedAnswer};
+    socket.send(JSON.stringify(payload));
+    statusEl.textContent = "Answer submitted";
+  };
+
+  function startSocket({name, player_id}) {
+    if (socket) socket.close();
+    socket = new WebSocket(`${location.origin.replace("http", "ws")}/ws/player/${sessionId}`);
+    socket.onopen = () => {
+      socket.send(JSON.stringify({type: "join", name, player_id}));
+    };
+    socket.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      if (data.type === "welcome") {
+        playerId = data.player.id;
+        playerLabel.textContent = `${data.player.name} (${playerId})`;
+        statusEl.textContent = "Connected";
+      }
+      if (data.type === "state") {
+        latestState = data.state;
+        updateReconnectList(data.state.disconnected_players || []);
+        renderState();
+      }
+    };
+    socket.onclose = () => { statusEl.textContent = "Disconnected"; };
+  }
+
+  function renderState() {
+    if (!latestState?.question) {
+      questionCard.style.display = "none";
+      return;
+    }
+    const q = latestState.question;
+    questionCard.style.display = "block";
+    questionText.textContent = q.text || "Untitled question";
+    renderMedia(q);
+    renderAnswerArea(q);
+    updateTimer(q);
+  }
+
+  function renderMedia(q) {
+    mediaEl.innerHTML = "";
+    (q.images || []).forEach(src => {
+      const img = document.createElement("img");
+      img.src = src;
+      mediaEl.appendChild(img);
+    });
+    (q.audio || []).forEach(src => {
+      const audio = document.createElement("audio");
+      audio.controls = true;
+      audio.src = src;
+      mediaEl.appendChild(audio);
+    });
+  }
+
+  function renderAnswerArea(q) {
+    answerArea.innerHTML = "";
+    selectedAnswer = null;
+    if (q.answer_type === "multiple_choice") {
+      const wrap = document.createElement("div");
+      wrap.className = "options";
+      (q.options || []).forEach(opt => {
+        const div = document.createElement("div");
+        div.className = "option";
+        div.textContent = opt;
+        div.onclick = () => {
+          selectedAnswer = opt;
+          document.querySelectorAll(".option").forEach(el => el.classList.remove("selected"));
+          div.classList.add("selected");
+        };
+        wrap.appendChild(div);
+      });
+      answerArea.appendChild(wrap);
+    } else {
+      const input = document.createElement("input");
+      input.type = q.answer_type === "numeric" ? "number" : "text";
+      input.placeholder = "Your answer";
+      input.oninput = (e) => selectedAnswer = e.target.value;
+      answerArea.appendChild(input);
+    }
+  }
+
+  function updateTimer(q) {
+    if (!q.closes_at) {
+      timerEl.textContent = "";
+      return;
+    }
+    const now = new Date(latestState.now).getTime();
+    const closes = new Date(q.closes_at).getTime();
+    const remaining = Math.max(0, Math.round((closes - now) / 1000));
+    timerEl.textContent = `Time left: ${remaining}s`;
+    submitBtn.disabled = remaining <= 0;
+  }
+
+  function updateReconnectList(disconnected) {
+    reconnectSelect.innerHTML = '<option value="">Reconnect as...</option>';
+    disconnected.forEach(p => {
+      const opt = document.createElement("option");
+      opt.value = p.id;
+      opt.textContent = `${p.name} (${p.id})`;
+      reconnectSelect.appendChild(opt);
+    });
+  }
+</script>
+</body>
+</html>
+

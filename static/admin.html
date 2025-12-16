@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Christmas Quiz - Admin</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    :root {
+      --bg: #0f1b2b;
+      --card: #14253a;
+      --accent: #e74c3c;
+      --muted: #c7d6e5;
+    }
+    body { font-family: Arial, sans-serif; background: var(--bg); color: #f5f8fb; margin: 0; }
+    header { background: #1c3350; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; }
+    main { padding: 16px; display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
+    .card { background: var(--card); border-radius: 10px; padding: 14px; box-shadow: 0 6px 20px rgba(0,0,0,0.25); }
+    input, textarea, select { width: 100%; padding: 10px; margin-bottom: 8px; border-radius: 6px; border: 1px solid #2a3f59; background: #0f2033; color: #fff; }
+    button { background: var(--accent); border: none; color: #fff; padding: 10px 12px; border-radius: 6px; cursor: pointer; }
+    button:disabled { opacity: 0.6; cursor: not-allowed; }
+    .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    .pill { background: #1f3550; padding: 6px 10px; border-radius: 14px; font-size: 12px; color: var(--muted); }
+    .list { max-height: 240px; overflow: auto; }
+    .quiz-item { padding: 8px; border: 1px solid #24405f; border-radius: 8px; margin-bottom: 6px; }
+    .question-block { background: #0f2033; padding: 8px; border-radius: 8px; margin-bottom: 8px; }
+    .state-box { background: #0f2033; padding: 10px; border-radius: 8px; min-height: 120px; }
+    .timer { font-size: 20px; font-weight: bold; color: #f6d36b; }
+    .nav { display: flex; gap: 8px; margin-bottom: 8px; }
+  </style>
+</head>
+<body>
+<header>
+  <div>Christmas Quiz – Admin</div>
+  <div class="pill" id="session-label">No session</div>
+</header>
+
+<main>
+  <div class="nav" style="grid-column: 1 / -1;">
+    <button id="nav-dashboard">Dashboard</button>
+    <button id="nav-quiz">New Quiz</button>
+    <button id="nav-question">Question Editor</button>
+    <button id="nav-sessions">Sessions</button>
+  </div>
+
+  <section class="card" id="view-dashboard" style="grid-column: 1 / -1;">
+    <h3>Dashboard</h3>
+    <div class="row">
+      <div style="flex:1">
+        <div><strong>Quizzes</strong></div>
+        <div class="list" id="quiz-list"></div>
+        <button id="refresh-quizzes">Refresh</button>
+      </div>
+      <div style="flex:1">
+        <div><strong>Sessions</strong></div>
+        <div class="list" id="session-list"></div>
+        <button id="refresh-sessions">Refresh</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="card" id="view-quiz" style="display:none; grid-column: 1 / -1;">
+    <h3>Create Quiz</h3>
+    <input id="quiz-name" placeholder="Quiz name">
+    <textarea id="quiz-desc" placeholder="Description (optional)"></textarea>
+    <input id="quiz-gap" type="number" value="3" min="0" placeholder="Gap seconds between questions">
+    <div id="questions"></div>
+    <div class="row">
+      <button id="add-question">Add question</button>
+      <button id="save-quiz">Save quiz</button>
+    </div>
+    <div id="quiz-status" class="pill"></div>
+    <div id="quiz-detail" style="margin-top:12px; display:none;">
+      <h4>Selected quiz</h4>
+      <div id="quiz-detail-meta"></div>
+      <div id="quiz-detail-questions" class="list"></div>
+      <div class="row">
+        <button id="quiz-refresh-detail">Refresh</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="card" id="view-question" style="display:none; grid-column: 1 / -1;">
+    <h3>Add Question</h3>
+    <input id="q-text" placeholder="Question text">
+    <input id="q-images" placeholder="Image URLs (comma separated)">
+    <input id="q-audio" placeholder="Audio URLs (comma separated)">
+    <select id="q-type">
+      <option value="multiple_choice">Multiple choice</option>
+      <option value="numeric">Numeric</option>
+      <option value="text">Text</option>
+    </select>
+    <input id="q-options" placeholder="Options (for multiple choice)">
+    <input id="q-duration" type="number" value="30" min="5" placeholder="Duration seconds">
+    <button id="add-question-to-quiz">Add to quiz draft</button>
+    <div class="pill" id="question-status"></div>
+  </section>
+
+  <section class="card" id="view-sessions" style="display:none; grid-column: 1 / -1;">
+    <h3>Sessions</h3>
+    <div class="row">
+      <input id="session-name" placeholder="Session name">
+      <input id="session-quizzes" placeholder="quiz-id-1, quiz-id-2">
+      <button id="create-session">Create session</button>
+    </div>
+    <div class="list" id="session-list-manage"></div>
+    <div class="pill" id="session-status"></div>
+    <h4>Control</h4>
+    <div class="row">
+      <input id="control-session-id" placeholder="Session ID">
+      <button id="load-session">Load</button>
+      <button id="start-session">Start</button>
+      <button id="toggle-manual">Toggle manual</button>
+      <button id="next-question">Next</button>
+    </div>
+    <div class="pill" id="control-status"></div>
+    <div class="state-box" id="state-box"></div>
+  </section>
+</main>
+
+<script>
+  const questionsEl = document.getElementById("questions");
+  const quizStatus = document.getElementById("quiz-status");
+  const quizList = document.getElementById("quiz-list");
+  const sessionList = document.getElementById("session-list");
+  const sessionListManage = document.getElementById("session-list-manage");
+  const sessionLabel = document.getElementById("session-label");
+  const controlStatus = document.getElementById("control-status");
+  const stateBox = document.getElementById("state-box");
+  const quizDetail = document.getElementById("quiz-detail");
+  const quizDetailMeta = document.getElementById("quiz-detail-meta");
+  const quizDetailQuestions = document.getElementById("quiz-detail-questions");
+  let controlSessionId = "";
+  let manual = false;
+  let ws;
+  let questionsDraft = [];
+  let currentQuizId = null;
+
+  function splitList(text) {
+    return text.split(",").map(s => s.trim()).filter(Boolean);
+  }
+
+  // Quiz draft rendering
+  function renderQuestionsDraft() {
+    questionsEl.innerHTML = "";
+    questionsDraft.forEach((q, idx) => {
+      const div = document.createElement("div");
+      div.className = "question-block";
+      div.innerHTML = `Q${idx + 1}: ${q.text || "(no text)"} (${q.answer_type})`;
+      questionsEl.appendChild(div);
+    });
+  }
+
+  document.getElementById("add-question").onclick = () => switchView("question");
+  document.getElementById("add-question-to-quiz").onclick = () => {
+    questionsDraft.push({
+      text: document.getElementById("q-text").value,
+      images: splitList(document.getElementById("q-images").value),
+      audio: splitList(document.getElementById("q-audio").value),
+      answer_type: document.getElementById("q-type").value,
+      options: splitList(document.getElementById("q-options").value),
+      duration_seconds: Number(document.getElementById("q-duration").value) || 30,
+      position: questionsDraft.length
+    });
+    document.getElementById("question-status").textContent = "Added to quiz draft";
+    renderQuestionsDraft();
+    switchView("quiz");
+  };
+
+  document.getElementById("save-quiz").onclick = async () => {
+    const name = document.getElementById("quiz-name").value.trim();
+    const description = document.getElementById("quiz-desc").value.trim();
+    const gap = Number(document.getElementById("quiz-gap").value) || 0;
+    const questions = questionsDraft.map((q, idx) => ({...q, position: idx}));
+    const res = await fetch("/admin/quizzes", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({name, description, gap_seconds: gap, questions})
+    });
+    if (res.ok) {
+      quizStatus.textContent = "Saved!";
+      questionsDraft = [];
+      renderQuestionsDraft();
+      loadQuizzes();
+      switchView("dashboard");
+    } else {
+      quizStatus.textContent = "Error saving quiz";
+    }
+  };
+
+  async function loadQuizzes() {
+    const res = await fetch("/admin/quizzes");
+    const data = await res.json();
+    quizList.innerHTML = "";
+    sessionList.innerHTML = "";
+    data.forEach(q => {
+      const div = document.createElement("div");
+      div.className = "quiz-item";
+      div.innerHTML = `<strong>${q.name}</strong> <small>${q.id}</small><br>${q.description || ""}<br>
+        <small>${q.questions.length} questions, gap ${q.gap_seconds}s</small>`;
+      div.onclick = () => { currentQuizId = q.id; showQuizDetail(q.id); switchView("quiz"); };
+      quizList.appendChild(div);
+      const opt = document.createElement("div");
+      opt.textContent = `${q.name} (${q.id})`;
+      sessionList.appendChild(opt);
+    });
+  }
+  document.getElementById("refresh-quizzes").onclick = loadQuizzes;
+  loadQuizzes();
+
+  async function showQuizDetail(id) {
+    const res = await fetch(`/admin/quizzes/${id}`);
+    if (!res.ok) return;
+    const q = await res.json();
+    quizDetail.style.display = "block";
+    quizDetailMeta.innerHTML = `<div><strong>${q.name}</strong> (${q.id})</div><div>${q.description || ""}</div>`;
+    renderQuizDetailQuestions(q.questions);
+    document.getElementById("quiz-refresh-detail").onclick = () => showQuizDetail(id);
+  }
+
+  function renderQuizDetailQuestions(questions) {
+    quizDetailQuestions.innerHTML = "";
+    questions
+      .slice()
+      .sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
+      .forEach((q, idx) => {
+        const row = document.createElement("div");
+        row.className = "quiz-item";
+        row.innerHTML = `
+          <div><strong>Q${idx + 1}</strong> ${q.text || "(no text)"} [${q.answer_type}]</div>
+          <div class="row">
+            <button onclick="moveQuestion('${q.id}', -1)">Up</button>
+            <button onclick="moveQuestion('${q.id}', 1)">Down</button>
+            <button onclick="removeQuestion('${q.id}')">Remove</button>
+          </div>
+        `;
+        quizDetailQuestions.appendChild(row);
+      });
+  }
+
+  window.moveQuestion = async (questionId, delta) => {
+    if (!currentQuizId) return;
+    const res = await fetch(`/admin/quizzes/${currentQuizId}`);
+    const data = await res.json();
+    const ordered = data.questions.sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
+    const idx = ordered.findIndex(q => q.id === questionId);
+    const swapIdx = idx + delta;
+    if (swapIdx < 0 || swapIdx >= ordered.length) return;
+    [ordered[idx], ordered[swapIdx]] = [ordered[swapIdx], ordered[idx]];
+    const orderIds = ordered.map(q => q.id);
+    await fetch(`/admin/quizzes/${currentQuizId}/questions/reorder`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(orderIds),
+    });
+    showQuizDetail(currentQuizId);
+  };
+
+  window.removeQuestion = async (questionId) => {
+    if (!currentQuizId) return;
+    await fetch(`/admin/quizzes/${currentQuizId}/questions/${questionId}`, {method: "DELETE"});
+    showQuizDetail(currentQuizId);
+  };
+
+  // Add question directly to selected quiz
+  document.getElementById("add-question-to-quiz").onclick = async () => {
+    if (!currentQuizId) {
+      document.getElementById("question-status").textContent = "Select a quiz first from Dashboard or Quiz list.";
+      return;
+    }
+    const payload = {
+      text: document.getElementById("q-text").value,
+      images: splitList(document.getElementById("q-images").value),
+      audio: splitList(document.getElementById("q-audio").value),
+      answer_type: document.getElementById("q-type").value,
+      options: splitList(document.getElementById("q-options").value),
+      duration_seconds: Number(document.getElementById("q-duration").value) || 30,
+    };
+    await fetch(`/admin/quizzes/${currentQuizId}/questions`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(payload),
+    });
+    document.getElementById("question-status").textContent = "Added to quiz";
+    showQuizDetail(currentQuizId);
+  };
+
+  // Sessions CRUD
+  document.getElementById("create-session").onclick = async () => {
+    const name = document.getElementById("session-name").value.trim();
+    const quizIds = splitList(document.getElementById("session-quizzes").value);
+    const res = await fetch("/admin/sessions", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({name, quiz_ids: quizIds})
+    });
+    const data = await res.json();
+    if (res.ok) {
+      sessionLabel.textContent = `Session ${data.id}`;
+      document.getElementById("control-session-id").value = data.id;
+      controlSessionId = data.id;
+      controlStatus.textContent = "Session created";
+      loadSessions();
+    } else {
+      controlStatus.textContent = data.detail || "Error creating session";
+    }
+  };
+
+  async function loadSessions() {
+    const res = await fetch("/admin/sessions");
+    const data = await res.json();
+    sessionListManage.innerHTML = "";
+    data.forEach(s => {
+      const div = document.createElement("div");
+      div.className = "quiz-item";
+      div.innerHTML = `
+        <strong>${s.name}</strong> <small>${s.id}</small><br>Status: ${s.status}<br>
+        <button onclick="startExisting('${s.id}')">Start</button>
+        <button onclick="resetSession('${s.id}')">Reset</button>
+        <button onclick="duplicateSession('${s.id}')">Duplicate</button>
+        <button onclick="deleteSession('${s.id}')">Delete</button>
+        <button onclick="loadSession('${s.id}')">Load</button>
+      `;
+      sessionListManage.appendChild(div);
+    });
+  }
+  document.getElementById("refresh-sessions").onclick = loadSessions;
+  loadSessions();
+
+  window.startExisting = async (id) => { await fetch(`/admin/sessions/${id}/start`, {method: "POST"}); };
+  window.resetSession = async (id) => { await fetch(`/admin/sessions/${id}/reset`, {method: "POST"}); loadSessions(); };
+  window.duplicateSession = async (id) => { await fetch(`/admin/sessions/${id}/duplicate`, {method: "POST"}); loadSessions(); };
+  window.deleteSession = async (id) => { await fetch(`/admin/sessions/${id}`, {method: "DELETE"}); loadSessions(); };
+
+  window.loadSession = (id) => {
+    document.getElementById("control-session-id").value = id;
+    controlSessionId = id;
+    sessionLabel.textContent = `Session ${id}`;
+    startWebSocket();
+    switchView("sessions");
+  };
+
+  document.getElementById("load-session").onclick = () => {
+    controlSessionId = document.getElementById("control-session-id").value.trim();
+    if (controlSessionId) {
+      sessionLabel.textContent = `Session ${controlSessionId}`;
+      controlStatus.textContent = "Loaded";
+      startWebSocket();
+    }
+  };
+
+  document.getElementById("start-session").onclick = async () => {
+    if (!controlSessionId) return;
+    const res = await fetch(`/admin/sessions/${controlSessionId}/start`, {method: "POST"});
+    const data = await res.json();
+    if (!res.ok) {
+      controlStatus.textContent = data.detail || "Failed to start session";
+      return;
+    }
+    controlStatus.textContent = `Session started (status: ${data.status})`;
+    startWebSocket();
+  };
+
+  document.getElementById("toggle-manual").onclick = async () => {
+    if (!controlSessionId) return;
+    manual = !manual;
+    await fetch(`/admin/sessions/${controlSessionId}/manual?manual=${manual}`, {method: "POST"});
+    controlStatus.textContent = manual ? "Manual override ON" : "Manual override OFF";
+  };
+
+  document.getElementById("next-question").onclick = async () => {
+    if (!controlSessionId) return;
+    await fetch(`/admin/sessions/${controlSessionId}/next`, {method: "POST"});
+    controlStatus.textContent = "Advanced to next";
+  };
+
+  function renderState(state) {
+    if (!state || !state.question) {
+      stateBox.innerHTML = `<div>Status: ${state?.status || "unknown"}</div><div>No active question</div>`;
+      return;
+    }
+    const q = state.question;
+    const remaining = q.remaining_seconds ?? 0;
+    stateBox.innerHTML = `
+      <div>Status: ${state.status} | Manual: ${state.manual_override}</div>
+      <div><strong>Q${(q.question_index ?? 0) + 1}:</strong> ${q.text || "(no text)"}</div>
+      <div class="timer">Time left: ${remaining}s</div>
+      <div>${q.answer_type}</div>
+      <div>${(q.options || []).map(o => `<span class="pill">${o}</span>`).join(" ")}</div>
+      <div>${(q.images || []).map(src => `<img src="${src}">`).join("")}</div>
+      <div>${(q.audio || []).map(src => `<audio controls src="${src}"></audio>`).join("")}</div>
+    `;
+  }
+
+  function startWebSocket() {
+    if (!controlSessionId) return;
+    if (ws) ws.close();
+    ws = new WebSocket(`${location.origin.replace("http", "ws")}/ws/admin/${controlSessionId}`);
+    ws.onmessage = (evt) => {
+      const data = JSON.parse(evt.data);
+      if (data.type === "state") renderState(data.state);
+    };
+    ws.onclose = () => { controlStatus.textContent = "Socket closed"; };
+  }
+
+  // View switching
+  function switchView(view) {
+    document.getElementById("view-dashboard").style.display = view === "dashboard" ? "block" : "none";
+    document.getElementById("view-quiz").style.display = view === "quiz" ? "block" : "none";
+    document.getElementById("view-question").style.display = view === "question" ? "block" : "none";
+    document.getElementById("view-sessions").style.display = view === "sessions" ? "block" : "none";
+  }
+  document.getElementById("nav-dashboard").onclick = () => switchView("dashboard");
+  document.getElementById("nav-quiz").onclick = () => switchView("quiz");
+  document.getElementById("nav-question").onclick = () => switchView("question");
+  document.getElementById("nav-sessions").onclick = () => { switchView("sessions"); loadSessions(); };
+  switchView("dashboard");
+</script>
+</body>
+</html>
