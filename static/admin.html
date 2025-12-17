@@ -62,6 +62,7 @@
     <h3>Create Quiz</h3>
     <input id="quiz-name" placeholder="Quiz name">
     <textarea id="quiz-desc" placeholder="Description (optional)"></textarea>
+    <textarea id="quiz-instructions" placeholder="Instructions shown to players before this quiz (optional)"></textarea>
     <input id="quiz-gap" type="number" value="3" min="0" placeholder="Gap seconds between questions">
     <div id="questions"></div>
     <div class="row">
@@ -83,7 +84,17 @@
     <h3>Add Question</h3>
     <input id="q-text" placeholder="Question text">
     <input id="q-images" placeholder="Image URLs (comma separated)">
+    <div class="row" style="margin-top:-4px;">
+      <button type="button" id="q-upload-image">Upload image</button>
+      <input type="file" id="q-upload-image-input" accept="image/*" style="display:none;">
+      <small style="color: var(--muted);">Paste URLs or upload to host files.</small>
+    </div>
     <input id="q-audio" placeholder="Audio URLs (comma separated)">
+    <div class="row" style="margin-top:-4px;">
+      <button type="button" id="q-upload-audio">Upload audio</button>
+      <input type="file" id="q-upload-audio-input" accept="audio/*" style="display:none;">
+      <small style="color: var(--muted);">Paste URLs or upload to host files.</small>
+    </div>
     <select id="q-type">
       <option value="multiple_choice">Multiple choice</option>
       <option value="numeric">Numeric</option>
@@ -94,6 +105,7 @@
     <select id="q-scoring">
       <option value="exact">Exact match</option>
       <option value="closest">Closest (numeric)</option>
+      <option value="black_sheep">Black sheep (majority wins)</option>
     </select>
     <label style="display:block; margin:6px 0;">
       <input type="checkbox" id="q-speed-bonus"> Speed bonus (faster = more points)
@@ -149,6 +161,11 @@
   const quizDetailQuestions = document.getElementById("quiz-detail-questions");
   const questionStatus = document.getElementById("question-status");
   const questionButton = document.getElementById("add-question-to-quiz");
+  const saveQuizBtn = document.getElementById("save-quiz");
+  const uploadImageBtn = document.getElementById("q-upload-image");
+  const uploadAudioBtn = document.getElementById("q-upload-audio");
+  const uploadImageInput = document.getElementById("q-upload-image-input");
+  const uploadAudioInput = document.getElementById("q-upload-audio-input");
   const sessionPathEl = document.getElementById("session-quiz-path");
   const sessionPoolEl = document.getElementById("session-quiz-pool");
   const sessionStatus = document.getElementById("session-status");
@@ -164,6 +181,28 @@
 
   function splitList(text) {
     return text.split(",").map(s => s.trim()).filter(Boolean);
+  }
+
+  async function uploadMedia(kind, inputEl, targetInput) {
+    if (!inputEl.files || !inputEl.files.length) return;
+    const file = inputEl.files[0];
+    const form = new FormData();
+    form.append("kind", kind);
+    form.append("file", file);
+    questionStatus.textContent = `Uploading ${file.name}...`;
+    try {
+      const res = await fetch("/admin/upload", {method: "POST", body: form});
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Upload failed");
+      const current = splitList(targetInput.value);
+      current.push(data.url);
+      targetInput.value = current.join(", ");
+      questionStatus.textContent = `Uploaded ${file.name}`;
+    } catch (err) {
+      questionStatus.textContent = err.message || "Upload failed";
+    } finally {
+      inputEl.value = "";
+    }
   }
 
   // Quiz draft rendering
@@ -183,12 +222,14 @@
     editingQuestionId = null;
     document.getElementById("quiz-name").value = "";
     document.getElementById("quiz-desc").value = "";
+    document.getElementById("quiz-instructions").value = "";
     document.getElementById("quiz-gap").value = 3;
     questionsDraft = [];
     renderQuestionsDraft();
     quizDetail.style.display = "none";
     quizStatus.textContent = "";
     setQuestionButtonLabel();
+    saveQuizBtn.textContent = "Save quiz";
   }
 
   // Session path builder
@@ -292,6 +333,14 @@
     setQuestionButtonLabel();
   }
 
+  function populateQuizForm(quiz) {
+    document.getElementById("quiz-name").value = quiz.name || "";
+    document.getElementById("quiz-desc").value = quiz.description || "";
+    document.getElementById("quiz-instructions").value = quiz.instructions || "";
+    document.getElementById("quiz-gap").value = quiz.gap_seconds ?? 3;
+    saveQuizBtn.textContent = "Save changes";
+  }
+
   function questionPayloadFromForm() {
     return {
       text: document.getElementById("q-text").value,
@@ -312,6 +361,11 @@
     setQuestionButtonLabel();
     switchView("question");
   };
+
+  uploadImageBtn.onclick = () => uploadImageInput.click();
+  uploadAudioBtn.onclick = () => uploadAudioInput.click();
+  uploadImageInput.onchange = () => uploadMedia("image", uploadImageInput, document.getElementById("q-images"));
+  uploadAudioInput.onchange = () => uploadMedia("audio", uploadAudioInput, document.getElementById("q-audio"));
 
   questionButton.onclick = async () => {
     const payload = questionPayloadFromForm();
@@ -358,19 +412,35 @@
   document.getElementById("save-quiz").onclick = async () => {
     const name = document.getElementById("quiz-name").value.trim();
     const description = document.getElementById("quiz-desc").value.trim();
+    const instructions = document.getElementById("quiz-instructions").value.trim();
     const gap = Number(document.getElementById("quiz-gap").value) || 0;
     const questions = questionsDraft.map((q, idx) => ({...q, position: idx}));
-    const res = await fetch("/admin/quizzes", {
-      method: "POST",
+    let url = "/admin/quizzes";
+    let method = "POST";
+    let body = {name, description, instructions, gap_seconds: gap, questions};
+    if (currentQuizId) {
+      // Editing existing quiz: patch metadata only
+      url = `/admin/quizzes/${currentQuizId}`;
+      method = "PATCH";
+      body = {name, description, instructions, gap_seconds: gap};
+    }
+    const res = await fetch(url, {
+      method,
       headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({name, description, gap_seconds: gap, questions})
+      body: JSON.stringify(body)
     });
     if (res.ok) {
-      quizStatus.textContent = "Saved!";
-      questionsDraft = [];
-      renderQuestionsDraft();
+      quizStatus.textContent = currentQuizId ? "Quiz updated" : "Saved!";
+      if (!currentQuizId) {
+        questionsDraft = [];
+        renderQuestionsDraft();
+      }
       loadQuizzes();
-      switchView("dashboard");
+      if (currentQuizId) {
+        showQuizDetail(currentQuizId);
+      } else {
+        switchView("dashboard");
+      }
     } else {
       quizStatus.textContent = "Error saving quiz";
     }
@@ -405,8 +475,13 @@
     currentQuizId = id;
     currentQuizQuestions = q.questions || [];
     setQuestionButtonLabel();
+    populateQuizForm(q);
     quizDetail.style.display = "block";
-    quizDetailMeta.innerHTML = `<div><strong>${q.name}</strong> (${q.id})</div><div>${q.description || ""}</div>`;
+    quizDetailMeta.innerHTML = `
+      <div><strong>${q.name}</strong> (${q.id})</div>
+      <div>${q.description || ""}</div>
+      <div style="color:#c7d6e5; white-space:pre-wrap;">${q.instructions || ""}</div>
+    `;
     renderQuizDetailQuestions(q.questions);
     document.getElementById("quiz-refresh-detail").onclick = () => showQuizDetail(id);
   }

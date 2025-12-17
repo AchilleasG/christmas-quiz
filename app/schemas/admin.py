@@ -18,6 +18,7 @@ class QuestionCreate(BaseModel):
 class QuizCreate(BaseModel):
     name: str
     description: Optional[str] = None
+    instructions: Optional[str] = None
     default_question_duration: int = 30
     gap_seconds: int = 3
     questions: List[QuestionCreate] = Field(default_factory=list)
@@ -41,9 +42,18 @@ class QuizRead(BaseModel):
     id: str
     name: str
     description: Optional[str]
+    instructions: Optional[str]
     default_question_duration: int
     gap_seconds: int
     questions: List[QuestionRead] = Field(default_factory=list)
+
+
+class QuizUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    instructions: Optional[str] = None
+    default_question_duration: Optional[int] = None
+    gap_seconds: Optional[int] = None
 
 
 class QuestionUpdate(BaseModel):

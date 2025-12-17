@@ -12,6 +12,7 @@ class Quiz(SQLModel, table=True):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()), primary_key=True)
     name: str
     description: Optional[str] = None
+    instructions: Optional[str] = None
     default_question_duration: int = Field(default=30, ge=5)
     gap_seconds: int = Field(default=3, ge=0)
 

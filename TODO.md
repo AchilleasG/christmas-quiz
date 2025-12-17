@@ -1,6 +1,8 @@
-- [ ] Support media uploads (images/audio) in the admin when creating questions, not just URLs; store and reference uploaded files automatically.
-- [ ] Per-quiz instructions shown to players before the first question of that quiz.
-- [ ] Add "black sheep" question type: multiple-choice opinion question where, at reveal, players in the majority choice each earn 1 point; non-majority answers earn 0. Timing behaves like other questions (submission window, reveal after timer or all answered).
+- [x] Support media uploads (images/audio) in the admin when creating questions, not just URLs; store and reference uploaded files automatically.
+- [x] Per-quiz instructions shown to players before the first question of that quiz.
+- [x] Add "black sheep" question type: multiple-choice opinion question where, at reveal, players in the majority choice each earn 1 point; non-majority answers earn 0. Timing behaves like other questions (submission window, reveal after timer or all answered).
+- [ ] Reconnect as doenst work
 - [ ] Allow declaring a winner at any point (manual end-of-quiz action that reveals scores and locks input).
+- [ ] Verify timed speed-bonus scoring curve and display (ensure multiplier behaves and UI shows expected decimals).
 - [ ] Make evetyhign mobile firendly
 - [ ] Add nice naiamtion trasnition between quizes

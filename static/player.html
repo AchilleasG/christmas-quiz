@@ -97,8 +97,20 @@
     }
 
     .media img {
-      max-width: 100%;
+      width: 100%;
+      max-height: 320px;
+      object-fit: contain;
       border-radius: 8px;
+      background: #0f2639;
+      border: 1px solid #2f4c62;
+    }
+
+    .media {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      max-height: 360px;
+      overflow: hidden;
     }
 
     .timer {
@@ -141,6 +153,7 @@
     <div class="card" id="intro-card" style="display:none;">
       <div id="intro-text"></div>
       <div id="intro-meta" style="color:#cdd7e0;"></div>
+      <div id="intro-instructions" style="color:#cdd7e0; white-space:pre-wrap; margin-top:6px;"></div>
     </div>
 
   <div class="card" id="score-card" style="display:none; color:#cdd7e0;">
@@ -215,8 +228,28 @@
     refreshSessions.onclick = loadSessions;
     window.pickSession = (id) => {
       document.getElementById("session-id").value = id;
+      fetchReconnectList(id);
     };
     loadSessions();
+
+    async function fetchReconnectList(sessionIdToLoad) {
+      if (!sessionIdToLoad) return;
+      try {
+        const res = await fetch(`/admin/sessions/${sessionIdToLoad}/state`);
+        if (!res.ok) return;
+        const data = await res.json();
+        const list = data.reconnect_candidates || data.disconnected_players || [];
+        const filtered = list.filter(p => p && p.id);
+        updateReconnectList(filtered);
+      } catch {
+        /* ignore */
+      }
+    }
+
+    document.getElementById("session-id").addEventListener("blur", (e) => {
+      const sid = e.target.value.trim();
+      fetchReconnectList(sid);
+    });
 
     function startSocket({ name, player_id }) {
       if (socket) socket.close();
@@ -236,7 +269,8 @@
           latestState = data.state;
           answerResults = latestState.answers || {};
           answerValues = latestState.answer_values || {};
-          updateReconnectList(data.state.disconnected_players || []);
+          const candidates = data.state.reconnect_candidates || data.state.disconnected_players || [];
+          updateReconnectList(candidates);
           renderState();
         }
       };
@@ -259,6 +293,7 @@
         questionCard.style.display = "none";
         introText.textContent = `Up next: ${intro.quiz_name || "Untitled quiz"}`;
         introMeta.textContent = `${intro.question_count || 0} questions`;
+        document.getElementById("intro-instructions").textContent = intro.quiz_instructions || "";
         return;
       }
       introCard.style.display = "none";
@@ -306,16 +341,17 @@
         .join("");
     }
 
-    function renderMedia(q) {
-      mediaEl.innerHTML = "";
-      (q.images || []).forEach(src => {
-        const img = document.createElement("img");
-        img.src = src;
-        mediaEl.appendChild(img);
-      });
-      (q.audio || []).forEach(src => {
-        const audio = document.createElement("audio");
-        audio.controls = true;
+  function renderMedia(q) {
+    mediaEl.innerHTML = "";
+    (q.images || []).forEach(src => {
+      const img = document.createElement("img");
+      img.src = src;
+      img.alt = "Question media";
+      mediaEl.appendChild(img);
+    });
+    (q.audio || []).forEach(src => {
+      const audio = document.createElement("audio");
+      audio.controls = true;
         audio.src = src;
         mediaEl.appendChild(audio);
       });
@@ -334,7 +370,12 @@
           div.className = "option";
           div.textContent = opt;
           const revealed = q.revealed;
-          const isCorrect = q.correct_answer && opt === q.correct_answer;
+          const correctAnswers = Array.isArray(q.correct_answer)
+            ? q.correct_answer
+            : q.correct_answer
+            ? [q.correct_answer]
+            : [];
+          const isCorrect = revealed && correctAnswers.includes(opt);
           const isMine = lastSubmittedAnswer && opt === lastSubmittedAnswer;
           if (revealed) {
             if (isCorrect) div.classList.add("correct-frame");
@@ -403,8 +444,15 @@
         return;
       }
       const myResult = answerResults[playerId];
+      const correctAnswers = Array.isArray(q.correct_answer)
+        ? q.correct_answer
+        : q.correct_answer
+        ? [q.correct_answer]
+        : [];
+      const label = q.scoring_type === "black_sheep" ? "Majority answer(s)" : "Correct answer";
+      const answerText = correctAnswers.length ? correctAnswers.join(" / ") : "(not set)";
       const verdict = myResult === undefined ? "" : myResult ? "You got it right!" : "You got it wrong.";
-      revealArea.textContent = `Correct answer: ${q.correct_answer || "(not set)"} ${verdict}`;
+      revealArea.textContent = `${label}: ${answerText} ${verdict}`;
     }
 
     function updateTimer(q) {

@@ -42,6 +42,8 @@ class RuntimeController:
         self.answer_values: dict[str, dict[str, Optional[str]]] = {}
         # Track closest question rankings
         self.closest_results: dict[str, list] = {}
+        # Track black sheep majority options per session
+        self.black_sheep_majority: dict[str, list[str]] = {}
 
     async def start(self, session_id: str):
         async with self.lock:
@@ -114,6 +116,7 @@ class RuntimeController:
             self.answer_results[session.id] = {}
             self.answer_values[session.id] = {}
             self.closest_results[session.id] = []
+            self.black_sheep_majority[session.id] = []
         await self._start_timer(session, entry)
         await self.broadcast_state(session.id)
         await self._persist_snapshot(session, entry)
@@ -185,6 +188,7 @@ class RuntimeController:
         self.answer_results.pop(session_id, None)
         self.answer_values.pop(session_id, None)
         self.closest_results.pop(session_id, None)
+        self.black_sheep_majority.pop(session_id, None)
         # Clear players for this session to reset scores/state
         self.players.pop(session_id, None)
         self.player_sockets.pop(session_id, None)
@@ -281,8 +285,13 @@ class RuntimeController:
             is_correct = False
             score_delta = 0
         elif question.answer_type == "multiple_choice":
-            is_correct = answer is not None and answer == question.correct_answer
-            score_delta = 1 if is_correct else 0
+            if question.scoring_type == "black_sheep":
+                # Defer scoring until finalize
+                is_correct = False
+                score_delta = 0
+            else:
+                is_correct = answer is not None and answer == question.correct_answer
+                score_delta = 1 if is_correct else 0
         elif question.answer_type == "text":
             is_correct = await self._evaluate_text_answer(answer, question.correct_answer)
             score_delta = 1 if is_correct else 0
@@ -325,6 +334,8 @@ class RuntimeController:
             await db.commit()
         answered.add(player_id)
         if question.scoring_type == "closest":
+            self.answer_results.setdefault(session_id, {})[player_id] = None
+        elif question.scoring_type == "black_sheep":
             self.answer_results.setdefault(session_id, {})[player_id] = None
         else:
             self.answer_results.setdefault(session_id, {})[player_id] = is_correct
@@ -377,6 +388,7 @@ class RuntimeController:
                         "quiz_id": quiz.id,
                         "quiz_name": quiz.name,
                         "quiz_description": quiz.description,
+                        "quiz_instructions": getattr(quiz, "instructions", None),
                         "question_count": len(self.current_entry["questions"]),
                     }
                 elif self.current_entry["kind"] == "question":
@@ -398,8 +410,13 @@ class RuntimeController:
                         "closes_at": self.current_end.isoformat() if self.current_end else None,
                         "remaining_seconds": self.remaining_seconds(),
                         "revealed": revealed,
-                        "correct_answer": q.correct_answer if revealed else None,
+                        "correct_answer": None,
                     }
+                    if revealed:
+                        if q.scoring_type == "black_sheep":
+                            question_payload["correct_answer"] = self.black_sheep_majority.get(session_id, [])
+                        else:
+                            question_payload["correct_answer"] = q.correct_answer
 
             return {
                 "id": session.id,
@@ -412,6 +429,10 @@ class RuntimeController:
                 "quiz_intro": intro_payload,
                 "stage": self.current_entry["kind"] if self.current_entry else None,
                 "players": list(self.players.get(session_id, {}).values()),
+                "disconnected_players": [
+                    p for p in self.players.get(session_id, {}).values() if not p.get("connected")
+                ],
+                "reconnect_candidates": list(self.players.get(session_id, {}).values()),
                 "now": utc_now().isoformat(),
                 "scores_revealed": self.scores_revealed.get(session_id, False),
                 "answers": self.answer_results.get(session_id, {}),
@@ -468,6 +489,7 @@ class RuntimeController:
             }
             # Reset answers cache; will be filled when loading current question
             self.answer_values[session_id] = {}
+            self.black_sheep_majority[session_id] = []
 
     async def _persist_snapshot(self, session: Session, entry: dict):
         from app.db import get_session
@@ -561,7 +583,45 @@ class RuntimeController:
             await self.broadcast_state(session_id)
 
     async def _finalize_question_scores(self, session_id: str, question: Question):
-        """Compute scores for closest-to-target numeric questions."""
+        """Compute scores for special scoring modes (closest, black_sheep, numeric default)."""
+        # Black sheep majority scoring for multiple choice
+        if question.scoring_type == "black_sheep":
+            from app.db import get_session
+
+            async with get_session() as db:
+                result = await db.exec(
+                    select(SessionAnswer).where(
+                        SessionAnswer.session_id == session_id, SessionAnswer.question_id == question.id
+                    )
+                )
+                answers = result.scalars().all()
+                counts: dict[str, int] = {}
+                for ans in answers:
+                    if ans.answer is None:
+                        continue
+                    counts[ans.answer] = counts.get(ans.answer, 0) + 1
+                if not counts:
+                    self.black_sheep_majority[session_id] = []
+                    return
+                max_count = max(counts.values())
+                majority_options = [opt for opt, cnt in counts.items() if cnt == max_count]
+                self.black_sheep_majority[session_id] = majority_options
+                for ans in answers:
+                    is_winner = ans.answer in majority_options if ans.answer is not None else False
+                    ans.is_correct = is_winner
+                    if is_winner:
+                        player = self.players.get(session_id, {}).get(ans.player_id)
+                        if player:
+                            player["score"] += 1
+                        db_player = await db.get(SessionPlayer, ans.player_id)
+                        if db_player:
+                            db_player.score = (db_player.score or 0) + 1
+                            db_player.updated_at = utc_now()
+                    self.answer_results.setdefault(session_id, {})[ans.player_id] = is_winner
+                await db.commit()
+            return
+
+        # Closest scoring and numeric default
         if question.scoring_type != "closest" and not (
             question.answer_type == "numeric" and not question.scoring_type
         ):

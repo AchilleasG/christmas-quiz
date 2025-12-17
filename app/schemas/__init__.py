@@ -4,6 +4,7 @@ from app.schemas.admin import (
     QuestionUpdate,
     QuizCreate,
     QuizRead,
+    QuizUpdate,
     SessionCreate,
     SessionRead,
 )
@@ -23,6 +24,7 @@ __all__ = [
     "QuestionUpdate",
     "QuizCreate",
     "QuizRead",
+    "QuizUpdate",
     "SessionCreate",
     "SessionRead",
     "AnswerMessage",

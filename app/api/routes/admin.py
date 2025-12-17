@@ -2,6 +2,8 @@ import uuid
 from pathlib import Path
 from typing import List
 
+import logging
+
 from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, UploadFile
 from sqlalchemy import delete, select
 from sqlalchemy.orm import selectinload
@@ -16,10 +18,13 @@ from app.schemas import (
     QuestionUpdate,
     QuizCreate,
     QuizRead,
+    QuizUpdate,
     SessionCreate,
     SessionRead,
 )
 from app.services.runtime import runtime
+
+logger = logging.getLogger("admin")
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -47,6 +52,7 @@ def serialize_quiz(quiz: Quiz) -> QuizRead:
         id=quiz.id,
         name=quiz.name,
         description=quiz.description,
+        instructions=getattr(quiz, "instructions", None),
         default_question_duration=quiz.default_question_duration,
         gap_seconds=quiz.gap_seconds,
         questions=[serialize_question(q) for q in ordered_questions],
@@ -68,6 +74,7 @@ async def create_quiz(payload: QuizCreate, db: AsyncSession = Depends(get_db_ses
     quiz = Quiz(
         name=payload.name,
         description=payload.description,
+        instructions=payload.instructions,
         default_question_duration=payload.default_question_duration,
         gap_seconds=payload.gap_seconds,
     )
@@ -111,6 +118,20 @@ async def get_quiz(quiz_id: str, db: AsyncSession = Depends(get_db_session)):
     quiz = result.scalars().first()
     if not quiz:
         raise HTTPException(status_code=404, detail="Quiz not found")
+    return serialize_quiz(quiz)
+
+
+@router.patch("/quizzes/{quiz_id}", response_model=QuizRead)
+async def update_quiz(quiz_id: str, payload: QuizUpdate, db: AsyncSession = Depends(get_db_session)):
+    quiz = await db.get(Quiz, quiz_id)
+    if not quiz:
+        raise HTTPException(status_code=404, detail="Quiz not found")
+    for field in ("name", "description", "instructions", "default_question_duration", "gap_seconds"):
+        value = getattr(payload, field)
+        if value is not None:
+            setattr(quiz, field, value)
+    await db.commit()
+    await db.refresh(quiz, attribute_names=["questions"])
     return serialize_quiz(quiz)
 
 @router.post("/quizzes/{quiz_id}/questions", response_model=QuizRead)
@@ -404,12 +425,15 @@ async def upload_media(
     kind: str = Form(..., regex="^(image|audio)$"),
     file: UploadFile = File(...),
 ):
-    allowed_image = {"image/png", "image/jpeg", "image/jpg", "image/gif"}
+    allowed_image = {"image/png", "image/jpeg", "image/jpg", "image/gif", "image/webp"}
     allowed_audio = {"audio/mpeg", "audio/mp3", "audio/wav", "audio/ogg", "audio/x-wav"}
+    logger.info("Upload attempt kind=%s filename=%s content_type=%s", kind, file.filename, file.content_type)
     if kind == "image" and file.content_type not in allowed_image:
-        raise HTTPException(status_code=400, detail="Unsupported image type")
+        logger.warning("Rejected upload: unsupported image type %s", file.content_type)
+        raise HTTPException(status_code=400, detail=f"Unsupported image type {file.content_type}")
     if kind == "audio" and file.content_type not in allowed_audio:
-        raise HTTPException(status_code=400, detail="Unsupported audio type")
+        logger.warning("Rejected upload: unsupported audio type %s", file.content_type)
+        raise HTTPException(status_code=400, detail=f"Unsupported audio type {file.content_type}")
 
     ext = Path(file.filename or "").suffix or (".jpg" if kind == "image" else ".mp3")
     filename = f"{uuid.uuid4()}{ext}"
