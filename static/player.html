@@ -174,6 +174,8 @@
     let answerValues = {};
 
     const statusEl = document.getElementById("status");
+    const sessionInput = document.getElementById("session-id");
+    const playerNameInput = document.getElementById("player-name");
     const joinCard = document.getElementById("join-card");
     const joinBtn = document.getElementById("join-btn");
     const sessionsList = document.getElementById("sessions-list");
@@ -195,8 +197,8 @@
     const scoreCard = document.getElementById("score-card");
 
     joinBtn.onclick = () => {
-      sessionId = document.getElementById("session-id").value.trim();
-      const name = document.getElementById("player-name").value.trim();
+      sessionId = sessionInput.value.trim();
+      const name = playerNameInput.value.trim();
       const reconnectAs = reconnectSelect.value || null;
       if (!sessionId) {
         statusEl.textContent = "Enter a session code";
@@ -227,7 +229,7 @@
     }
     refreshSessions.onclick = loadSessions;
     window.pickSession = (id) => {
-      document.getElementById("session-id").value = id;
+      sessionInput.value = id;
       fetchReconnectList(id);
     };
     loadSessions();
@@ -246,13 +248,25 @@
       }
     }
 
-    document.getElementById("session-id").addEventListener("blur", (e) => {
+    let reconnectLookup;
+    sessionInput.addEventListener("input", (e) => {
       const sid = e.target.value.trim();
-      fetchReconnectList(sid);
-    });
+      clearTimeout(reconnectLookup);
+      if (!sid) {
+        updateReconnectList([]);
+        return;
+      }
+    reconnectLookup = setTimeout(() => fetchReconnectList(sid), 200);
+  });
 
-    function startSocket({ name, player_id }) {
-      if (socket) socket.close();
+  sessionInput.addEventListener("blur", (e) => fetchReconnectList(e.target.value.trim()));
+  reconnectSelect.addEventListener("focus", () => {
+    const sid = sessionInput.value.trim();
+    if (sid) fetchReconnectList(sid);
+  });
+
+  function startSocket({ name, player_id }) {
+    if (socket) socket.close();
       socket = new WebSocket(`${location.origin.replace("http", "ws")}/ws/player/${sessionId}`);
       socket.onopen = () => {
         socket.send(JSON.stringify({ type: "join", name, player_id }));
@@ -277,6 +291,10 @@
       socket.onclose = () => {
         statusEl.textContent = "Disconnected";
         joinCard.style.display = "block";
+        if (sessionId) {
+          sessionInput.value = sessionId;
+          fetchReconnectList(sessionId);
+        }
       };
     }
 

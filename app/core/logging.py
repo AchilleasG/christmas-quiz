@@ -9,6 +9,8 @@ def configure_logging():
     log_dir = Path("logs")
     log_dir.mkdir(parents=True, exist_ok=True)
     log_file = log_dir / "app.log"
+    runtime_file = log_dir / "runtime.log"
+    admin_file = log_dir / "admin.log"
 
     config = {
         "version": 1,
@@ -33,10 +35,40 @@ def configure_logging():
                 "backupCount": 3,
                 "encoding": "utf-8",
             },
+            "runtime_file": {
+                "class": "logging.handlers.RotatingFileHandler",
+                "formatter": "default",
+                "level": log_level,
+                "filename": str(runtime_file),
+                "maxBytes": 5 * 1024 * 1024,
+                "backupCount": 3,
+                "encoding": "utf-8",
+            },
+            "admin_file": {
+                "class": "logging.handlers.RotatingFileHandler",
+                "formatter": "default",
+                "level": log_level,
+                "filename": str(admin_file),
+                "maxBytes": 5 * 1024 * 1024,
+                "backupCount": 3,
+                "encoding": "utf-8",
+            },
         },
         "root": {
             "level": log_level,
             "handlers": ["console", "file"],
+        },
+        "loggers": {
+            "runtime": {
+                "level": log_level,
+                "handlers": ["console", "runtime_file"],
+                "propagate": False,
+            },
+            "admin": {
+                "level": log_level,
+                "handlers": ["console", "admin_file"],
+                "propagate": False,
+            },
         },
     }
 

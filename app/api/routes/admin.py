@@ -420,6 +420,38 @@ async def force_next(session_id: str, db: AsyncSession = Depends(get_db_session)
     )
 
 
+@router.post("/sessions/{session_id}/finish", response_model=SessionRead)
+async def finish_session(session_id: str, db: AsyncSession = Depends(get_db_session)):
+    session = await db.get(Session, session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    await runtime.finish_session(session_id)
+    await db.refresh(session)
+    return SessionRead(
+        id=session.id,
+        name=session.name,
+        status=session.status,
+        auto_advance=session.auto_advance,
+        manual_override=session.manual_override,
+        active_quiz_index=session.active_quiz_index,
+        active_question_index=session.active_question_index,
+    )
+
+
+@router.post("/sessions/{session_id}/players/{player_id}/adjust_score")
+async def adjust_player_score(
+    session_id: str,
+    player_id: str,
+    delta: float,
+    db: AsyncSession = Depends(get_db_session),
+):
+    session = await db.get(Session, session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    new_score = await runtime.adjust_player_score(session_id, player_id, delta)
+    return {"player_id": player_id, "new_score": new_score, "delta": delta}
+
+
 @router.post("/upload")
 async def upload_media(
     kind: str = Form(..., regex="^(image|audio)$"),

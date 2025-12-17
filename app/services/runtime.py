@@ -45,6 +45,67 @@ class RuntimeController:
         # Track black sheep majority options per session
         self.black_sheep_majority: dict[str, list[str]] = {}
 
+    async def finish_session(self, session_id: str):
+        """End the session early and move to finished state (scores still hidden)."""
+        async with self.lock:
+            from app.db import get_session
+
+            async with get_session() as db:
+                session = await db.get(Session, session_id)
+                if not session:
+                    raise HTTPException(status_code=404, detail="Session not found")
+                if self.current_entry and self.current_entry.get("kind") == "question" and not self.current_finalized:
+                    await self._finalize_question_scores(session.id, self.current_entry["question"])
+                    self.current_finalized = True
+
+                session.status = SessionStatus.FINISHED
+                session.active_quiz_index = None
+                session.active_question_index = None
+                session.finished_at = utc_now()
+                await db.commit()
+
+            if self.timer_task:
+                self.timer_task.cancel()
+                self.timer_task = None
+            if self.active_session_id == session_id:
+                self.active_session_id = None
+            self.current_entry = None
+            self.current_start = None
+            self.current_end = None
+            await self.broadcast_state(session_id)
+
+    async def adjust_player_score(self, session_id: str, player_id: str, delta: float) -> float:
+        """Adjust a player's score by delta (can be negative)."""
+        if session_id not in self.players:
+            await self._load_players_from_db(session_id)
+        session_players = self.players.get(session_id, {})
+        player = session_players.get(player_id)
+        if not player:
+            raise HTTPException(status_code=404, detail="Player not found")
+
+        new_score = max(0.0, (player.get("score") or 0) + delta)
+        player["score"] = new_score
+
+        from app.db import get_session
+
+        async with get_session() as db:
+            db_player = await db.get(SessionPlayer, player_id)
+            if not db_player:
+                raise HTTPException(status_code=404, detail="Player not found")
+            db_player.score = new_score
+            db_player.updated_at = utc_now()
+            await db.commit()
+
+        self.logger.info(
+            "adjust_player_score session=%s player=%s delta=%s new_score=%s",
+            session_id,
+            player_id,
+            delta,
+            new_score,
+        )
+        await self.broadcast_state(session_id)
+        return new_score
+
     async def start(self, session_id: str):
         async with self.lock:
             from app.db import get_session
@@ -206,6 +267,13 @@ class RuntimeController:
             player = {"id": player_id, "name": name or "Player", "score": 0}
             session_players[player_id] = player
         player["connected"] = True
+        self.logger.info(
+            "register_player session=%s player_id=%s name=%s connected=%s",
+            session_id,
+            player_id,
+            player.get("name"),
+            player.get("connected"),
+        )
         # Persist player state
         from app.db import get_session
 
@@ -235,6 +303,12 @@ class RuntimeController:
         player = self.players[session_id].get(player_id)
         if player:
             player["connected"] = False
+            self.logger.info(
+                "disconnect_player session=%s player_id=%s players=%s",
+                session_id,
+                player_id,
+                list(self.players[session_id].keys()),
+            )
             await self.broadcast_state(session_id)
             from app.db import get_session
 
@@ -418,6 +492,13 @@ class RuntimeController:
                         else:
                             question_payload["correct_answer"] = q.correct_answer
 
+            players_list = list(self.players.get(session_id, {}).values())
+            self.logger.info(
+                "state session=%s players=%s reconnect_candidates=%s",
+                session_id,
+                [(p.get('id'), p.get('connected')) for p in players_list],
+                len(players_list),
+            )
             return {
                 "id": session.id,
                 "name": session.name,
@@ -429,10 +510,8 @@ class RuntimeController:
                 "quiz_intro": intro_payload,
                 "stage": self.current_entry["kind"] if self.current_entry else None,
                 "players": list(self.players.get(session_id, {}).values()),
-                "disconnected_players": [
-                    p for p in self.players.get(session_id, {}).values() if not p.get("connected")
-                ],
-                "reconnect_candidates": list(self.players.get(session_id, {}).values()),
+                "disconnected_players": [p for p in players_list if not p.get("connected")],
+                "reconnect_candidates": players_list,
                 "now": utc_now().isoformat(),
                 "scores_revealed": self.scores_revealed.get(session_id, False),
                 "answers": self.answer_results.get(session_id, {}),

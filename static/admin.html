@@ -26,6 +26,7 @@
     .state-box { background: #0f2033; padding: 10px; border-radius: 8px; min-height: 120px; }
     .timer { font-size: 20px; font-weight: bold; color: #f6d36b; }
     .nav { display: flex; gap: 8px; margin-bottom: 8px; }
+    .score-btn { padding: 4px 8px; margin-left: 4px; font-size: 12px; }
   </style>
 </head>
 <body>
@@ -141,6 +142,7 @@
       <button id="start-session">Start</button>
       <button id="toggle-manual">Toggle manual</button>
       <button id="next-question">Next</button>
+      <button id="finish-session" style="background:#f39c12;">Finish</button>
     </div>
     <div class="pill" id="control-status"></div>
     <div class="state-box" id="state-box"></div>
@@ -178,6 +180,25 @@
   let editingQuestionId = null;
   let sessionQuizPath = [];
   let quizCache = [];
+  stateBox.addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-score-delta]");
+    if (!btn) return;
+    const playerId = btn.getAttribute("data-player-id");
+    let delta = btn.getAttribute("data-score-delta");
+    if (!playerId || delta === null) return;
+    if (delta === "custom") {
+      const input = prompt("Adjust score by (+/- number)", "1");
+      if (input === null) return;
+      delta = parseFloat(input);
+    } else {
+      delta = parseFloat(delta);
+    }
+    if (Number.isNaN(delta)) {
+      controlStatus.textContent = "Invalid score adjustment";
+      return;
+    }
+    adjustPlayerScore(playerId, delta);
+  });
 
   function splitList(text) {
     return text.split(",").map(s => s.trim()).filter(Boolean);
@@ -650,12 +671,57 @@ document.getElementById("refresh-sessions").onclick = loadSessions;
     await fetch(`/admin/sessions/${controlSessionId}/next`, {method: "POST"});
     controlStatus.textContent = "Advanced to next";
   };
+  document.getElementById("finish-session").onclick = async () => {
+    if (!controlSessionId) return;
+    const res = await fetch(`/admin/sessions/${controlSessionId}/finish`, {method: "POST"});
+    const data = await res.json();
+    if (!res.ok) {
+      controlStatus.textContent = data.detail || "Failed to finish session";
+      return;
+    }
+    controlStatus.textContent = "Session finished (scores hidden until reveal)";
+  };
+
+  async function adjustPlayerScore(playerId, delta) {
+    if (!controlSessionId) return;
+    controlStatus.textContent = "Adjusting score...";
+    try {
+      const res = await fetch(
+        `/admin/sessions/${controlSessionId}/players/${encodeURIComponent(playerId)}/adjust_score?delta=${delta}`,
+        { method: "POST" }
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        controlStatus.textContent = data.detail || "Failed to adjust score";
+        return;
+      }
+      controlStatus.textContent = `Adjusted ${playerId} by ${delta}`;
+    } catch (err) {
+      controlStatus.textContent = "Failed to adjust score";
+    }
+  }
 
   function renderState(state) {
     if (!state) {
       stateBox.innerHTML = `<div>Status: unknown</div>`;
       return;
     }
+    const players = (state.players || []).slice().sort((a, b) => (b.score || 0) - (a.score || 0));
+    const playersHtml = players.length
+      ? players
+          .map(
+            p => `
+              <div>
+                ${p.name || "Player"} – ${p.score ?? 0}${p.connected ? "" : " (disconnected)"}
+                <button class="score-btn" data-player-id="${p.id}" data-score-delta="1">+1</button>
+                <button class="score-btn" data-player-id="${p.id}" data-score-delta="-1">-1</button>
+                <button class="score-btn" data-player-id="${p.id}" data-score-delta="custom">±</button>
+              </div>
+            `
+          )
+          .join("")
+      : "<div>No players yet</div>";
+
     if (state.stage === "quiz_intro" && state.quiz_intro) {
       const intro = state.quiz_intro;
       stateBox.innerHTML = `
@@ -664,11 +730,19 @@ document.getElementById("refresh-sessions").onclick = loadSessions;
         <div>${intro.quiz_description || ""}</div>
         <div>${intro.question_count || 0} questions</div>
         <div class="pill">Awaiting Next</div>
+        <div style="margin-top:8px;"><strong>Players</strong></div>
+        <div>${playersHtml}</div>
       `;
       return;
     }
     if (!state.question) {
-      stateBox.innerHTML = `<div>Status: ${state.status}</div><div>No active question</div>`;
+      stateBox.innerHTML = `
+        <div>Status: ${state.status}</div>
+        <div>No active question</div>
+        ${state.status === "finished" ? '<div class="pill">Finished – scores hidden until reveal</div>' : ""}
+        <div style="margin-top:8px;"><strong>Players</strong></div>
+        <div>${playersHtml}</div>
+      `;
       return;
     }
     const q = state.question;
@@ -681,6 +755,8 @@ document.getElementById("refresh-sessions").onclick = loadSessions;
       <div>${(q.options || []).map(o => `<span class="pill">${o}</span>`).join(" ")}</div>
       <div>${(q.images || []).map(src => `<img src="${src}">`).join("")}</div>
       <div>${(q.audio || []).map(src => `<audio controls src="${src}"></audio>`).join("")}</div>
+      <div style="margin-top:8px;"><strong>Players</strong></div>
+      <div>${playersHtml}</div>
     `;
   }
 
