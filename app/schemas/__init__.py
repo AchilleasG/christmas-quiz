@@ -1,6 +1,7 @@
 from app.schemas.admin import (
     QuestionCreate,
     QuestionRead,
+    QuestionUpdate,
     QuizCreate,
     QuizRead,
     SessionCreate,
@@ -19,6 +20,7 @@ from app.schemas.session import (
 __all__ = [
     "QuestionCreate",
     "QuestionRead",
+    "QuestionUpdate",
     "QuizCreate",
     "QuizRead",
     "SessionCreate",

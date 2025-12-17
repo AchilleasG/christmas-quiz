@@ -8,6 +8,7 @@ class Player(BaseModel):
     id: str
     name: str
     connected: bool = False
+    score: int = 0
 
 
 class Question(BaseModel):
@@ -61,4 +62,3 @@ class JoinMessage(BaseModel):
     type: str
     name: Optional[str] = None
     player_id: Optional[str] = None
-

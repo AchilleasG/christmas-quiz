@@ -6,12 +6,14 @@ from fastapi.staticfiles import StaticFiles
 
 from app.api.routes import admin, root
 from app.core.config import settings
+from app.core.logging import configure_logging
 from app.db import init_db
 from app.api.ws import router as ws_router
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    configure_logging()
     # Ensure media directory exists before serving uploads
     settings.media_root.mkdir(parents=True, exist_ok=True)
     await init_db()

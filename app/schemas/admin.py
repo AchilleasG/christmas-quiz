@@ -9,6 +9,8 @@ class QuestionCreate(BaseModel):
     audio: List[str] = Field(default_factory=list)
     answer_type: str
     options: List[str] = Field(default_factory=list)
+    correct_answer: Optional[str] = None
+    scoring_type: str = Field(default="exact")
     duration_seconds: int = 30
 
 
@@ -27,7 +29,10 @@ class QuestionRead(BaseModel):
     audio: List[str]
     answer_type: str
     options: List[str]
+    correct_answer: Optional[str]
+    scoring_type: str
     duration_seconds: int
+    position: int
 
 
 class QuizRead(BaseModel):
@@ -37,6 +42,17 @@ class QuizRead(BaseModel):
     default_question_duration: int
     gap_seconds: int
     questions: List[QuestionRead] = Field(default_factory=list)
+
+
+class QuestionUpdate(BaseModel):
+    text: Optional[str] = None
+    images: Optional[List[str]] = None
+    audio: Optional[List[str]] = None
+    answer_type: Optional[str] = None
+    options: Optional[List[str]] = None
+    correct_answer: Optional[str] = None
+    scoring_type: Optional[str] = None
+    duration_seconds: Optional[int] = None
 
 
 class SessionCreate(BaseModel):

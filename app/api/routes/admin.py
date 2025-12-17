@@ -8,12 +8,58 @@ from sqlalchemy.orm import selectinload
 
 from app.core.config import settings
 from app.dependencies import get_db_session
-from app.models import Question, Quiz, Session, SessionQuiz
-from app.schemas import QuestionCreate, QuestionRead, QuizCreate, QuizRead, SessionCreate, SessionRead
+from app.models import Question, Quiz, Session, SessionAnswer, SessionPlayer, SessionQuiz, SessionSnapshot
+from app.models.session import SessionStatus
+from app.schemas import (
+    QuestionCreate,
+    QuestionRead,
+    QuestionUpdate,
+    QuizCreate,
+    QuizRead,
+    SessionCreate,
+    SessionRead,
+)
 from app.services.runtime import runtime
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 router = APIRouter(prefix="/admin", tags=["admin"])
+
+
+def serialize_question(question: Question) -> QuestionRead:
+    return QuestionRead(
+        id=question.id,
+        text=question.text,
+        images=question.images,
+        audio=question.audio,
+        answer_type=question.answer_type,
+        options=question.options,
+        correct_answer=question.correct_answer,
+        scoring_type=question.scoring_type or "exact",
+        duration_seconds=question.duration_seconds,
+        position=question.position if question.position is not None else 0,
+    )
+
+
+def serialize_quiz(quiz: Quiz) -> QuizRead:
+    ordered_questions = sorted(quiz.questions, key=lambda q: q.position or 0)
+    return QuizRead(
+        id=quiz.id,
+        name=quiz.name,
+        description=quiz.description,
+        default_question_duration=quiz.default_question_duration,
+        gap_seconds=quiz.gap_seconds,
+        questions=[serialize_question(q) for q in ordered_questions],
+    )
+
+
+def validate_correct_answer(answer_type: str, options: list[str], correct_answer: str | None):
+    if answer_type == "multiple_choice" and correct_answer and correct_answer not in options:
+        raise HTTPException(status_code=400, detail="correct_answer must match one of the options for multiple choice")
+    if answer_type == "numeric" and correct_answer:
+        try:
+            float(correct_answer)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="correct_answer must be a number for numeric questions")
 
 
 @router.post("/quizzes", response_model=QuizRead)
@@ -26,6 +72,7 @@ async def create_quiz(payload: QuizCreate, db: AsyncSession = Depends(get_db_ses
     )
     for idx, q in enumerate(payload.questions):
         duration = q.duration_seconds or payload.default_question_duration
+        validate_correct_answer(q.answer_type, q.options, q.correct_answer)
         quiz.questions.append(
             Question(
                 text=q.text,
@@ -33,88 +80,36 @@ async def create_quiz(payload: QuizCreate, db: AsyncSession = Depends(get_db_ses
                 audio=q.audio,
                 answer_type=q.answer_type,
                 options=q.options,
+                correct_answer=q.correct_answer,
+                scoring_type=q.scoring_type or "exact",
                 duration_seconds=duration,
                 position=idx,
             )
         )
     db.add(quiz)
     await db.commit()
-    await db.refresh(quiz)
     await db.refresh(quiz, attribute_names=["questions"])
-    return QuizRead(
-        id=quiz.id,
-        name=quiz.name,
-        description=quiz.description,
-        default_question_duration=quiz.default_question_duration,
-        gap_seconds=quiz.gap_seconds,
-        questions=[
-            QuestionRead(
-                id=q.id,
-                text=q.text,
-                images=q.images,
-                audio=q.audio,
-                answer_type=q.answer_type,
-                options=q.options,
-                duration_seconds=q.duration_seconds,
-            )
-            for q in quiz.questions
-        ],
-    )
+    return serialize_quiz(quiz)
 
 
 @router.get("/quizzes", response_model=List[QuizRead])
 async def list_quizzes(db: AsyncSession = Depends(get_db_session)):
     result = await db.execute(select(Quiz).options(selectinload(Quiz.questions)))
     quizzes = result.scalars().unique().all()
-    return [
-        QuizRead(
-            id=q.id,
-            name=q.name,
-            description=q.description,
-            default_question_duration=q.default_question_duration,
-            gap_seconds=q.gap_seconds,
-            questions=[
-                QuestionRead(
-                    id=ques.id,
-                    text=ques.text,
-                    images=ques.images,
-                    audio=ques.audio,
-                    answer_type=ques.answer_type,
-                    options=ques.options,
-                    duration_seconds=ques.duration_seconds,
-                )
-                for ques in q.questions
-            ],
-        )
-        for q in quizzes
-    ]
+    return [serialize_quiz(q) for q in quizzes]
 
 
 @router.get("/quizzes/{quiz_id}", response_model=QuizRead)
 async def get_quiz(quiz_id: str, db: AsyncSession = Depends(get_db_session)):
-    result = await db.execute(select(Quiz).options(selectinload(Quiz.questions)).where(Quiz.id == quiz_id))
+    result = await db.execute(
+        select(Quiz)
+        .options(selectinload(Quiz.questions))
+        .where(Quiz.id == quiz_id)
+    )
     quiz = result.scalars().first()
     if not quiz:
         raise HTTPException(status_code=404, detail="Quiz not found")
-    return QuizRead(
-        id=quiz.id,
-        name=quiz.name,
-        description=quiz.description,
-        default_question_duration=quiz.default_question_duration,
-        gap_seconds=quiz.gap_seconds,
-        questions=[
-            QuestionRead(
-                id=q.id,
-                text=q.text,
-                images=q.images,
-                audio=q.audio,
-                answer_type=q.answer_type,
-                options=q.options,
-                duration_seconds=q.duration_seconds,
-            )
-            for q in quiz.questions
-        ],
-    )
+    return serialize_quiz(quiz)
 
 @router.post("/quizzes/{quiz_id}/questions", response_model=QuizRead)
 async def add_question(quiz_id: str, payload: QuestionCreate, db: AsyncSession = Depends(get_db_session)):
@@ -123,6 +118,7 @@ async def add_question(quiz_id: str, payload: QuestionCreate, db: AsyncSession =
         raise HTTPException(status_code=404, detail="Quiz not found")
     await db.refresh(quiz, attribute_names=["questions"])
     position = len(quiz.questions)
+    validate_correct_answer(payload.answer_type, payload.options, payload.correct_answer)
     question = Question(
         quiz_id=quiz_id,
         text=payload.text,
@@ -130,13 +126,15 @@ async def add_question(quiz_id: str, payload: QuestionCreate, db: AsyncSession =
         audio=payload.audio,
         answer_type=payload.answer_type,
         options=payload.options,
+        correct_answer=payload.correct_answer,
+        scoring_type=payload.scoring_type or "exact",
         duration_seconds=payload.duration_seconds or quiz.default_question_duration,
         position=position,
     )
     db.add(question)
     await db.commit()
     await db.refresh(quiz, attribute_names=["questions"])
-    return await get_quiz(quiz_id, db)
+    return serialize_quiz(quiz)
 
 
 @router.post("/quizzes/{quiz_id}/questions/reorder", response_model=QuizRead)
@@ -148,6 +146,36 @@ async def reorder_questions(quiz_id: str, order: List[str] = Body(...), db: Asyn
         raise HTTPException(status_code=400, detail="Order list must include all question ids")
     for idx, qid in enumerate(order):
         id_to_question[qid].position = idx
+    await db.commit()
+    return await get_quiz(quiz_id, db)
+
+
+@router.patch("/quizzes/{quiz_id}/questions/{question_id}", response_model=QuizRead)
+async def update_question(
+    quiz_id: str,
+    question_id: str,
+    payload: QuestionUpdate,
+    db: AsyncSession = Depends(get_db_session),
+):
+    question = await db.get(Question, question_id)
+    if not question or question.quiz_id != quiz_id:
+        raise HTTPException(status_code=404, detail="Question not found")
+
+    for field in (
+        "text",
+        "images",
+        "audio",
+        "answer_type",
+        "options",
+        "correct_answer",
+        "scoring_type",
+        "duration_seconds",
+    ):
+        value = getattr(payload, field)
+        if value is not None:
+            setattr(question, field, value)
+
+    validate_correct_answer(question.answer_type, question.options, question.correct_answer)
     await db.commit()
     return await get_quiz(quiz_id, db)
 
@@ -218,6 +246,10 @@ async def reset_session(session_id: str, db: AsyncSession = Depends(get_db_sessi
     session.active_question_index = None
     session.started_at = None
     session.finished_at = None
+    # Clear persisted answers/snapshots and reset player scores
+    await db.execute(delete(SessionSnapshot).where(SessionSnapshot.session_id == session_id))
+    await db.execute(delete(SessionAnswer).where(SessionAnswer.session_id == session_id))
+    await db.execute(delete(SessionPlayer).where(SessionPlayer.session_id == session_id))
     await db.commit()
     await db.refresh(session)
     return SessionRead(
@@ -237,10 +269,34 @@ async def delete_session(session_id: str, db: AsyncSession = Depends(get_db_sess
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
     await runtime.cancel(session_id)
+    # Clean up related rows to avoid FK violations
+    await db.execute(delete(SessionSnapshot).where(SessionSnapshot.session_id == session_id))
+    await db.execute(delete(SessionAnswer).where(SessionAnswer.session_id == session_id))
+    await db.execute(delete(SessionPlayer).where(SessionPlayer.session_id == session_id))
     await db.execute(delete(SessionQuiz).where(SessionQuiz.session_id == session_id))
     await db.delete(session)
     await db.commit()
     return {"deleted": session_id}
+
+
+@router.post("/sessions/{session_id}/reveal_scores", response_model=SessionRead)
+async def reveal_scores(session_id: str, reveal: bool = True, db: AsyncSession = Depends(get_db_session)):
+    session = await db.get(Session, session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    if session.status != SessionStatus.FINISHED:
+        raise HTTPException(status_code=400, detail="Scores can only be revealed after the session is finished")
+    await runtime.set_scores_revealed(session_id, reveal)
+    await db.refresh(session)
+    return SessionRead(
+        id=session.id,
+        name=session.name,
+        status=session.status,
+        auto_advance=session.auto_advance,
+        manual_override=session.manual_override,
+        active_quiz_index=session.active_quiz_index,
+        active_question_index=session.active_question_index,
+    )
 
 
 @router.post("/sessions/{session_id}/duplicate", response_model=SessionRead)
@@ -274,6 +330,24 @@ async def start_session(session_id: str, db: AsyncSession = Depends(get_db_sessi
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
     await runtime.start(session_id)
+    await db.refresh(session)
+    return SessionRead(
+        id=session.id,
+        name=session.name,
+        status=session.status,
+        auto_advance=session.auto_advance,
+        manual_override=session.manual_override,
+        active_quiz_index=session.active_quiz_index,
+        active_question_index=session.active_question_index,
+    )
+
+
+@router.post("/sessions/{session_id}/resume", response_model=SessionRead)
+async def resume_session(session_id: str, db: AsyncSession = Depends(get_db_session)):
+    session = await db.get(Session, session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    await runtime.resume(session_id)
     await db.refresh(session)
     return SessionRead(
         id=session.id,

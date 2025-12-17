@@ -90,6 +90,11 @@
       <option value="text">Text</option>
     </select>
     <input id="q-options" placeholder="Options (for multiple choice)">
+    <input id="q-correct" placeholder="Correct answer (must match an option for multiple choice)">
+    <select id="q-scoring">
+      <option value="exact">Exact match</option>
+      <option value="closest">Closest (numeric)</option>
+    </select>
     <input id="q-duration" type="number" value="30" min="5" placeholder="Duration seconds">
     <button id="add-question-to-quiz">Add to quiz draft</button>
     <div class="pill" id="question-status"></div>
@@ -99,8 +104,18 @@
     <h3>Sessions</h3>
     <div class="row">
       <input id="session-name" placeholder="Session name">
-      <input id="session-quizzes" placeholder="quiz-id-1, quiz-id-2">
       <button id="create-session">Create session</button>
+      <button id="session-clear-path">Clear path</button>
+    </div>
+    <div class="row">
+      <div style="flex:1">
+        <div><strong>Available quizzes</strong></div>
+        <div class="list" id="session-quiz-pool"></div>
+      </div>
+      <div style="flex:1">
+        <div><strong>Session path (use arrows to reorder)</strong></div>
+        <div class="list" id="session-quiz-path"></div>
+      </div>
     </div>
     <div class="list" id="session-list-manage"></div>
     <div class="pill" id="session-status"></div>
@@ -129,11 +144,20 @@
   const quizDetail = document.getElementById("quiz-detail");
   const quizDetailMeta = document.getElementById("quiz-detail-meta");
   const quizDetailQuestions = document.getElementById("quiz-detail-questions");
+  const questionStatus = document.getElementById("question-status");
+  const questionButton = document.getElementById("add-question-to-quiz");
+  const sessionPathEl = document.getElementById("session-quiz-path");
+  const sessionPoolEl = document.getElementById("session-quiz-pool");
+  const sessionStatus = document.getElementById("session-status");
   let controlSessionId = "";
   let manual = false;
   let ws;
   let questionsDraft = [];
   let currentQuizId = null;
+  let currentQuizQuestions = [];
+  let editingQuestionId = null;
+  let sessionQuizPath = [];
+  let quizCache = [];
 
   function splitList(text) {
     return text.split(",").map(s => s.trim()).filter(Boolean);
@@ -145,24 +169,183 @@
     questionsDraft.forEach((q, idx) => {
       const div = document.createElement("div");
       div.className = "question-block";
-      div.innerHTML = `Q${idx + 1}: ${q.text || "(no text)"} (${q.answer_type})`;
+      div.innerHTML = `Q${idx + 1}: ${q.text || "(no text)"} (${q.answer_type}) – ${q.duration_seconds || 30}s`;
       questionsEl.appendChild(div);
     });
   }
 
-  document.getElementById("add-question").onclick = () => switchView("question");
-  document.getElementById("add-question-to-quiz").onclick = () => {
-    questionsDraft.push({
+  function startNewQuizDraft() {
+    currentQuizId = null;
+    currentQuizQuestions = [];
+    editingQuestionId = null;
+    document.getElementById("quiz-name").value = "";
+    document.getElementById("quiz-desc").value = "";
+    document.getElementById("quiz-gap").value = 3;
+    questionsDraft = [];
+    renderQuestionsDraft();
+    quizDetail.style.display = "none";
+    quizStatus.textContent = "";
+    setQuestionButtonLabel();
+  }
+
+  // Session path builder
+  function renderSessionPool() {
+    sessionPoolEl.innerHTML = "";
+    quizCache.forEach(q => {
+      const row = document.createElement("div");
+      row.className = "quiz-item";
+      row.innerHTML = `<strong>${q.name}</strong><br><small>${q.id}</small><br>${q.questions.length} questions`;
+      const addBtn = document.createElement("button");
+      addBtn.textContent = sessionQuizPath.find(item => item.id === q.id) ? "Added" : "Add";
+      addBtn.disabled = !!sessionQuizPath.find(item => item.id === q.id);
+      addBtn.onclick = () => {
+        if (sessionQuizPath.find(item => item.id === q.id)) return;
+        sessionQuizPath.push({id: q.id, name: q.name});
+        renderSessionPool();
+        renderSessionPath();
+      };
+      row.appendChild(addBtn);
+      sessionPoolEl.appendChild(row);
+    });
+  }
+
+  function renderSessionPath() {
+    sessionPathEl.innerHTML = "";
+    sessionQuizPath.forEach((q, idx) => {
+      const row = document.createElement("div");
+      row.className = "quiz-item";
+      row.innerHTML = `<strong>${idx + 1}.</strong> ${q.name} <small>${q.id}</small>`;
+      const btns = document.createElement("div");
+      btns.className = "row";
+      const up = document.createElement("button");
+      up.textContent = "Up";
+      up.disabled = idx === 0;
+      up.onclick = () => {
+        if (idx === 0) return;
+        [sessionQuizPath[idx - 1], sessionQuizPath[idx]] = [sessionQuizPath[idx], sessionQuizPath[idx - 1]];
+        renderSessionPath();
+      };
+      const down = document.createElement("button");
+      down.textContent = "Down";
+      down.disabled = idx === sessionQuizPath.length - 1;
+      down.onclick = () => {
+        if (idx === sessionQuizPath.length - 1) return;
+        [sessionQuizPath[idx + 1], sessionQuizPath[idx]] = [sessionQuizPath[idx], sessionQuizPath[idx + 1]];
+        renderSessionPath();
+      };
+      const remove = document.createElement("button");
+      remove.textContent = "Remove";
+      remove.onclick = () => {
+        sessionQuizPath = sessionQuizPath.filter(item => item.id !== q.id);
+        renderSessionPool();
+        renderSessionPath();
+      };
+      btns.appendChild(up);
+      btns.appendChild(down);
+      btns.appendChild(remove);
+      row.appendChild(btns);
+      sessionPathEl.appendChild(row);
+    });
+    sessionStatus.textContent = sessionQuizPath.length ? `Path length: ${sessionQuizPath.length}` : "";
+  }
+
+  function setQuestionButtonLabel() {
+    if (editingQuestionId) {
+      questionButton.textContent = "Save question";
+    } else if (currentQuizId) {
+      questionButton.textContent = "Add to quiz";
+    } else {
+      questionButton.textContent = "Add to quiz draft";
+    }
+  }
+
+  function resetQuestionForm(statusText = "") {
+    document.getElementById("q-text").value = "";
+    document.getElementById("q-images").value = "";
+    document.getElementById("q-audio").value = "";
+    document.getElementById("q-type").value = "multiple_choice";
+    document.getElementById("q-options").value = "";
+    document.getElementById("q-correct").value = "";
+    document.getElementById("q-scoring").value = "exact";
+    document.getElementById("q-duration").value = 30;
+    editingQuestionId = null;
+    questionStatus.textContent = statusText;
+    setQuestionButtonLabel();
+  }
+
+  function populateQuestionForm(question) {
+    document.getElementById("q-text").value = question.text || "";
+    document.getElementById("q-images").value = (question.images || []).join(", ");
+    document.getElementById("q-audio").value = (question.audio || []).join(", ");
+    document.getElementById("q-type").value = question.answer_type || "multiple_choice";
+    document.getElementById("q-options").value = (question.options || []).join(", ");
+    document.getElementById("q-correct").value = question.correct_answer || "";
+    document.getElementById("q-scoring").value = question.scoring_type || "exact";
+    document.getElementById("q-duration").value = question.duration_seconds || 30;
+    editingQuestionId = question.id;
+    questionStatus.textContent = "Editing existing question";
+    setQuestionButtonLabel();
+  }
+
+  function questionPayloadFromForm() {
+    return {
       text: document.getElementById("q-text").value,
       images: splitList(document.getElementById("q-images").value),
       audio: splitList(document.getElementById("q-audio").value),
       answer_type: document.getElementById("q-type").value,
       options: splitList(document.getElementById("q-options").value),
+      correct_answer: document.getElementById("q-correct").value || null,
+      scoring_type: document.getElementById("q-scoring").value || "exact",
       duration_seconds: Number(document.getElementById("q-duration").value) || 30,
-      position: questionsDraft.length
-    });
-    document.getElementById("question-status").textContent = "Added to quiz draft";
+    };
+  }
+
+  document.getElementById("add-question").onclick = () => {
+    editingQuestionId = null;
+    questionStatus.textContent = "";
+    setQuestionButtonLabel();
+    switchView("question");
+  };
+
+  questionButton.onclick = async () => {
+    const payload = questionPayloadFromForm();
+    if (editingQuestionId && currentQuizId) {
+      const res = await fetch(`/admin/quizzes/${currentQuizId}/questions/${editingQuestionId}`, {
+        method: "PATCH",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        resetQuestionForm("Question updated");
+        showQuizDetail(currentQuizId);
+        switchView("quiz");
+      } else {
+        questionStatus.textContent = data.detail || "Unable to update question";
+      }
+      return;
+    }
+
+    if (currentQuizId) {
+      const res = await fetch(`/admin/quizzes/${currentQuizId}/questions`, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(payload),
+      });
+      if (res.ok) {
+        questionStatus.textContent = "Added to quiz";
+        showQuizDetail(currentQuizId);
+        resetQuestionForm(questionStatus.textContent);
+      } else {
+        questionStatus.textContent = "Failed to add question";
+      }
+      return;
+    }
+
+    questionsDraft.push({...payload, position: questionsDraft.length});
+    questionStatus.textContent = "Added to quiz draft";
     renderQuestionsDraft();
+    resetQuestionForm(questionStatus.textContent);
     switchView("quiz");
   };
 
@@ -190,6 +373,7 @@
   async function loadQuizzes() {
     const res = await fetch("/admin/quizzes");
     const data = await res.json();
+    quizCache = data;
     quizList.innerHTML = "";
     sessionList.innerHTML = "";
     data.forEach(q => {
@@ -203,6 +387,7 @@
       opt.textContent = `${q.name} (${q.id})`;
       sessionList.appendChild(opt);
     });
+    renderSessionPool();
   }
   document.getElementById("refresh-quizzes").onclick = loadQuizzes;
   loadQuizzes();
@@ -211,6 +396,9 @@
     const res = await fetch(`/admin/quizzes/${id}`);
     if (!res.ok) return;
     const q = await res.json();
+    currentQuizId = id;
+    currentQuizQuestions = q.questions || [];
+    setQuestionButtonLabel();
     quizDetail.style.display = "block";
     quizDetailMeta.innerHTML = `<div><strong>${q.name}</strong> (${q.id})</div><div>${q.description || ""}</div>`;
     renderQuizDetailQuestions(q.questions);
@@ -218,18 +406,21 @@
   }
 
   function renderQuizDetailQuestions(questions) {
+    currentQuizQuestions = questions ? questions.slice() : [];
     quizDetailQuestions.innerHTML = "";
-    questions
+    currentQuizQuestions
       .slice()
       .sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
       .forEach((q, idx) => {
         const row = document.createElement("div");
         row.className = "quiz-item";
         row.innerHTML = `
-          <div><strong>Q${idx + 1}</strong> ${q.text || "(no text)"} [${q.answer_type}]</div>
+          <div><strong>Q${idx + 1}</strong> ${q.text || "(no text)"} [${q.answer_type}] – ${q.duration_seconds || 30}s</div>
+          <div style="font-size:12px; color:#c7d6e5;">Correct: ${q.correct_answer || "-"} | Scoring: ${q.scoring_type || "exact"}</div>
           <div class="row">
             <button onclick="moveQuestion('${q.id}', -1)">Up</button>
             <button onclick="moveQuestion('${q.id}', 1)">Down</button>
+            <button onclick="editQuestion('${q.id}')">Edit</button>
             <button onclick="removeQuestion('${q.id}')">Remove</button>
           </div>
         `;
@@ -255,39 +446,27 @@
     showQuizDetail(currentQuizId);
   };
 
+  window.editQuestion = (questionId) => {
+    const question = currentQuizQuestions.find(q => q.id === questionId);
+    if (!question) return;
+    populateQuestionForm(question);
+    switchView("question");
+  };
+
   window.removeQuestion = async (questionId) => {
     if (!currentQuizId) return;
     await fetch(`/admin/quizzes/${currentQuizId}/questions/${questionId}`, {method: "DELETE"});
     showQuizDetail(currentQuizId);
   };
 
-  // Add question directly to selected quiz
-  document.getElementById("add-question-to-quiz").onclick = async () => {
-    if (!currentQuizId) {
-      document.getElementById("question-status").textContent = "Select a quiz first from Dashboard or Quiz list.";
-      return;
-    }
-    const payload = {
-      text: document.getElementById("q-text").value,
-      images: splitList(document.getElementById("q-images").value),
-      audio: splitList(document.getElementById("q-audio").value),
-      answer_type: document.getElementById("q-type").value,
-      options: splitList(document.getElementById("q-options").value),
-      duration_seconds: Number(document.getElementById("q-duration").value) || 30,
-    };
-    await fetch(`/admin/quizzes/${currentQuizId}/questions`, {
-      method: "POST",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify(payload),
-    });
-    document.getElementById("question-status").textContent = "Added to quiz";
-    showQuizDetail(currentQuizId);
-  };
-
   // Sessions CRUD
   document.getElementById("create-session").onclick = async () => {
     const name = document.getElementById("session-name").value.trim();
-    const quizIds = splitList(document.getElementById("session-quizzes").value);
+    if (!sessionQuizPath.length) {
+      sessionStatus.textContent = "Pick at least one quiz for the session path";
+      return;
+    }
+    const quizIds = sessionQuizPath.map(q => q.id);
     const res = await fetch("/admin/sessions", {
       method: "POST",
       headers: {"Content-Type": "application/json"},
@@ -300,9 +479,18 @@
       controlSessionId = data.id;
       controlStatus.textContent = "Session created";
       loadSessions();
+      sessionQuizPath = [];
+      renderSessionPath();
+      renderSessionPool();
     } else {
       controlStatus.textContent = data.detail || "Error creating session";
     }
+  };
+
+  document.getElementById("session-clear-path").onclick = () => {
+    sessionQuizPath = [];
+    renderSessionPath();
+    renderSessionPool();
   };
 
   async function loadSessions() {
@@ -314,22 +502,31 @@
       div.className = "quiz-item";
       div.innerHTML = `
         <strong>${s.name}</strong> <small>${s.id}</small><br>Status: ${s.status}<br>
-        <button onclick="startExisting('${s.id}')">Start</button>
-        <button onclick="resetSession('${s.id}')">Reset</button>
-        <button onclick="duplicateSession('${s.id}')">Duplicate</button>
-        <button onclick="deleteSession('${s.id}')">Delete</button>
-        <button onclick="loadSession('${s.id}')">Load</button>
-      `;
-      sessionListManage.appendChild(div);
-    });
-  }
-  document.getElementById("refresh-sessions").onclick = loadSessions;
+      <button onclick="startExisting('${s.id}')">Start</button>
+      <button onclick="resetSession('${s.id}')">Reset</button>
+      <button onclick="duplicateSession('${s.id}')">Duplicate</button>
+      <button onclick="deleteSession('${s.id}')">Delete</button>
+      <button onclick="loadSession('${s.id}')">Load</button>
+      <button onclick="revealScores('${s.id}')">Reveal scores</button>
+    `;
+    sessionListManage.appendChild(div);
+  });
+}
+document.getElementById("refresh-sessions").onclick = loadSessions;
   loadSessions();
 
   window.startExisting = async (id) => { await fetch(`/admin/sessions/${id}/start`, {method: "POST"}); };
   window.resetSession = async (id) => { await fetch(`/admin/sessions/${id}/reset`, {method: "POST"}); loadSessions(); };
   window.duplicateSession = async (id) => { await fetch(`/admin/sessions/${id}/duplicate`, {method: "POST"}); loadSessions(); };
   window.deleteSession = async (id) => { await fetch(`/admin/sessions/${id}`, {method: "DELETE"}); loadSessions(); };
+  window.revealScores = async (id) => {
+    const res = await fetch(`/admin/sessions/${id}/reveal_scores?reveal=true`, {method: "POST"});
+    if (!res.ok) {
+      controlStatus.textContent = "Scores can be revealed only after session finishes.";
+    } else {
+      controlStatus.textContent = "Scores revealed.";
+    }
+  };
 
   window.loadSession = (id) => {
     document.getElementById("control-session-id").value = id;
@@ -374,8 +571,23 @@
   };
 
   function renderState(state) {
-    if (!state || !state.question) {
-      stateBox.innerHTML = `<div>Status: ${state?.status || "unknown"}</div><div>No active question</div>`;
+    if (!state) {
+      stateBox.innerHTML = `<div>Status: unknown</div>`;
+      return;
+    }
+    if (state.stage === "quiz_intro" && state.quiz_intro) {
+      const intro = state.quiz_intro;
+      stateBox.innerHTML = `
+        <div>Status: ${state.status} | Manual: ${state.manual_override}</div>
+        <div><strong>Up next:</strong> ${intro.quiz_name || "Untitled quiz"}</div>
+        <div>${intro.quiz_description || ""}</div>
+        <div>${intro.question_count || 0} questions</div>
+        <div class="pill">Awaiting Next</div>
+      `;
+      return;
+    }
+    if (!state.question) {
+      stateBox.innerHTML = `<div>Status: ${state.status}</div><div>No active question</div>`;
       return;
     }
     const q = state.question;
@@ -408,11 +620,14 @@
     document.getElementById("view-quiz").style.display = view === "quiz" ? "block" : "none";
     document.getElementById("view-question").style.display = view === "question" ? "block" : "none";
     document.getElementById("view-sessions").style.display = view === "sessions" ? "block" : "none";
+    setQuestionButtonLabel();
   }
   document.getElementById("nav-dashboard").onclick = () => switchView("dashboard");
-  document.getElementById("nav-quiz").onclick = () => switchView("quiz");
-  document.getElementById("nav-question").onclick = () => switchView("question");
+  document.getElementById("nav-quiz").onclick = () => { startNewQuizDraft(); switchView("quiz"); };
+  document.getElementById("nav-question").onclick = () => { editingQuestionId = null; switchView("question"); };
   document.getElementById("nav-sessions").onclick = () => { switchView("sessions"); loadSessions(); };
+  startNewQuizDraft();
+  renderSessionPath();
   switchView("dashboard");
 </script>
 </body>

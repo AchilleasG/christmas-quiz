@@ -15,7 +15,10 @@ class Quiz(SQLModel, table=True):
     default_question_duration: int = Field(default=30, ge=5)
     gap_seconds: int = Field(default=3, ge=0)
 
-    questions: List["Question"] = Relationship(back_populates="quiz")
+    questions: List["Question"] = Relationship(
+        back_populates="quiz",
+        sa_relationship_kwargs={"order_by": "Question.position"},
+    )
 
 
 class Question(SQLModel, table=True):
@@ -28,6 +31,8 @@ class Question(SQLModel, table=True):
     audio: list[str] = Field(sa_column=Column(JSONB, default=list))
     answer_type: str
     options: list[str] = Field(sa_column=Column(JSONB, default=list))
+    correct_answer: Optional[str] = None
+    scoring_type: str = Field(default="exact")
     duration_seconds: int = Field(default=30, ge=5)
     position: int = Field(sa_column=Column(Integer), default=0)
 
