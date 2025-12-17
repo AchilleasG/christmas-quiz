@@ -36,6 +36,7 @@ def serialize_question(question: Question) -> QuestionRead:
         correct_answer=question.correct_answer,
         scoring_type=question.scoring_type or "exact",
         duration_seconds=question.duration_seconds,
+        speed_bonus=bool(getattr(question, "speed_bonus", False)),
         position=question.position if question.position is not None else 0,
     )
 
@@ -83,6 +84,7 @@ async def create_quiz(payload: QuizCreate, db: AsyncSession = Depends(get_db_ses
                 correct_answer=q.correct_answer,
                 scoring_type=q.scoring_type or "exact",
                 duration_seconds=duration,
+                speed_bonus=q.speed_bonus,
                 position=idx,
             )
         )
@@ -170,6 +172,7 @@ async def update_question(
         "correct_answer",
         "scoring_type",
         "duration_seconds",
+        "speed_bonus",
     ):
         value = getattr(payload, field)
         if value is not None:

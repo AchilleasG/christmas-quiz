@@ -95,6 +95,9 @@
       <option value="exact">Exact match</option>
       <option value="closest">Closest (numeric)</option>
     </select>
+    <label style="display:block; margin:6px 0;">
+      <input type="checkbox" id="q-speed-bonus"> Speed bonus (faster = more points)
+    </label>
     <input id="q-duration" type="number" value="30" min="5" placeholder="Duration seconds">
     <button id="add-question-to-quiz">Add to quiz draft</button>
     <div class="pill" id="question-status"></div>
@@ -169,7 +172,7 @@
     questionsDraft.forEach((q, idx) => {
       const div = document.createElement("div");
       div.className = "question-block";
-      div.innerHTML = `Q${idx + 1}: ${q.text || "(no text)"} (${q.answer_type}) – ${q.duration_seconds || 30}s`;
+      div.innerHTML = `Q${idx + 1}: ${q.text || "(no text)"} (${q.answer_type}) – ${q.duration_seconds || 30}s – speed bonus: ${q.speed_bonus ? "on" : "off"}`;
       questionsEl.appendChild(div);
     });
   }
@@ -267,6 +270,7 @@
     document.getElementById("q-options").value = "";
     document.getElementById("q-correct").value = "";
     document.getElementById("q-scoring").value = "exact";
+    document.getElementById("q-speed-bonus").checked = false;
     document.getElementById("q-duration").value = 30;
     editingQuestionId = null;
     questionStatus.textContent = statusText;
@@ -281,6 +285,7 @@
     document.getElementById("q-options").value = (question.options || []).join(", ");
     document.getElementById("q-correct").value = question.correct_answer || "";
     document.getElementById("q-scoring").value = question.scoring_type || "exact";
+    document.getElementById("q-speed-bonus").checked = !!question.speed_bonus;
     document.getElementById("q-duration").value = question.duration_seconds || 30;
     editingQuestionId = question.id;
     questionStatus.textContent = "Editing existing question";
@@ -296,6 +301,7 @@
       options: splitList(document.getElementById("q-options").value),
       correct_answer: document.getElementById("q-correct").value || null,
       scoring_type: document.getElementById("q-scoring").value || "exact",
+      speed_bonus: document.getElementById("q-speed-bonus").checked,
       duration_seconds: Number(document.getElementById("q-duration").value) || 30,
     };
   }
@@ -416,7 +422,7 @@
         row.className = "quiz-item";
         row.innerHTML = `
           <div><strong>Q${idx + 1}</strong> ${q.text || "(no text)"} [${q.answer_type}] – ${q.duration_seconds || 30}s</div>
-          <div style="font-size:12px; color:#c7d6e5;">Correct: ${q.correct_answer || "-"} | Scoring: ${q.scoring_type || "exact"}</div>
+          <div style="font-size:12px; color:#c7d6e5;">Correct: ${q.correct_answer || "-"} | Scoring: ${q.scoring_type || "exact"} | Speed bonus: ${q.speed_bonus ? "on" : "off"}</div>
           <div class="row">
             <button onclick="moveQuestion('${q.id}', -1)">Up</button>
             <button onclick="moveQuestion('${q.id}', 1)">Down</button>

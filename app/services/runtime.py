@@ -291,6 +291,13 @@ class RuntimeController:
             is_correct = True if answer is not None else False
             score_delta = 1 if is_correct else 0
 
+        # Optional speed bonus: linear 1.5 -> 0 over the question duration based on response time
+        if is_correct and getattr(question, "speed_bonus", False) and self.current_start:
+            elapsed = max(0.0, (utc_now() - self.current_start).total_seconds())
+            duration = max(1.0, float(question.duration_seconds or self.current_entry.get("duration_seconds", 1)))
+            multiplier = max(0.0, min(1.5, 1.5 * (1 - (elapsed / duration))))
+            score_delta *= multiplier
+
         if score_delta:
             self.players[session_id][player_id]["score"] += score_delta
             # Persist score bump
@@ -385,6 +392,7 @@ class RuntimeController:
                         "answer_type": q.answer_type,
                         "options": q.options,
                         "scoring_type": q.scoring_type,
+                        "speed_bonus": bool(getattr(q, "speed_bonus", False)),
                         "duration_seconds": q.duration_seconds,
                         "started_at": self.current_start.isoformat() if self.current_start else None,
                         "closes_at": self.current_end.isoformat() if self.current_end else None,

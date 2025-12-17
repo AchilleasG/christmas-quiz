@@ -33,6 +33,7 @@ class Question(SQLModel, table=True):
     options: list[str] = Field(sa_column=Column(JSONB, default=list))
     correct_answer: Optional[str] = None
     scoring_type: str = Field(default="exact")
+    speed_bonus: bool = Field(default=False)
     duration_seconds: int = Field(default=30, ge=5)
     position: int = Field(sa_column=Column(Integer), default=0)
 

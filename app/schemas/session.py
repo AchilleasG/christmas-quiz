@@ -8,7 +8,7 @@ class Player(BaseModel):
     id: str
     name: str
     connected: bool = False
-    score: int = 0
+    score: float = 0
 
 
 class Question(BaseModel):
@@ -19,6 +19,7 @@ class Question(BaseModel):
     answer_type: str
     options: List[str] = Field(default_factory=list)
     duration_seconds: int = 30
+    speed_bonus: bool = False
     starts_at: Optional[datetime] = None
     closes_at: Optional[datetime] = None
 

@@ -12,6 +12,7 @@ class QuestionCreate(BaseModel):
     correct_answer: Optional[str] = None
     scoring_type: str = Field(default="exact")
     duration_seconds: int = 30
+    speed_bonus: bool = False
 
 
 class QuizCreate(BaseModel):
@@ -32,6 +33,7 @@ class QuestionRead(BaseModel):
     correct_answer: Optional[str]
     scoring_type: str
     duration_seconds: int
+    speed_bonus: bool
     position: int
 
 
@@ -53,6 +55,7 @@ class QuestionUpdate(BaseModel):
     correct_answer: Optional[str] = None
     scoring_type: Optional[str] = None
     duration_seconds: Optional[int] = None
+    speed_bonus: Optional[bool] = None
 
 
 class SessionCreate(BaseModel):

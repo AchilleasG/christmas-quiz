@@ -12,7 +12,7 @@ class SessionPlayer(SQLModel, table=True):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()), primary_key=True)
     session_id: str = Field(foreign_key="sessions.id")
     name: str
-    score: int = Field(default=0, ge=0)
+    score: float = Field(default=0.0, ge=0)
     connected: bool = Field(default=False)
     created_at: datetime = Field(default_factory=datetime.utcnow, sa_column=Column(DateTime(timezone=True)))
     updated_at: datetime = Field(default_factory=datetime.utcnow, sa_column=Column(DateTime(timezone=True)))
