@@ -320,6 +320,7 @@
       }
       const q = latestState.question;
       const renderKey = `${q.id}-${q.revealed ? "revealed" : "open"}`;
+      const mediaKey = `${q.id}-${(q.images || []).join(",")}-${(q.audio || []).join(",")}`;
       const isNewQuestion = q.id !== lastQuestionId;
       if (isNewQuestion) {
         lastQuestionId = q.id;
@@ -328,7 +329,10 @@
       updateHeaderProgress(latestState.active_question_index);
       questionCard.style.display = "block";
       questionText.textContent = q.text || "Ερώτηση χωρίς τίτλο";
-      renderMedia(q);
+      if (mediaKey !== window.__lastMediaKey) {
+        renderMedia(q);
+        window.__lastMediaKey = mediaKey;
+      }
       if (renderKey !== window.__lastRenderKey) {
         renderAnswerArea(q);
         window.__lastRenderKey = renderKey;

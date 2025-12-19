@@ -64,6 +64,7 @@
     let lastQuestionId = null;
     let lastRevealKey = null;
     const QUIZ_META_KEY = (sid) => `presenter_quiz_meta_${sid || "default"}`;
+    let lastMediaKey = null;
 
     sessionLabel.textContent = sessionId ? `Συνεδρία ${sessionId}` : "Καμία συνεδρία";
 
@@ -148,7 +149,11 @@
       const q = latestState.question;
       questionCard.style.display = "block";
       questionText.textContent = q.text || "Ερώτηση χωρίς τίτλο";
-      renderMedia(q);
+      const mediaKey = `${q.id}-${(q.images || []).join(",")}-${(q.audio || []).join(",")}`;
+      if (mediaKey !== lastMediaKey) {
+        renderMedia(q);
+        lastMediaKey = mediaKey;
+      }
       renderOptions(q);
       renderReveal(q);
     }
