@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="el">
+
+<head>
+  <meta charset="UTF-8">
+  <title>Presenter View - Christmas Quiz</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="/static/styles/player.css">
+  <link rel="stylesheet" href="/static/styles/presenter.css">
+</head>
+
+<body>
+  <div class="snow-layer"></div>
+  <div class="presenter-shell">
+    <header class="presenter-topbar">
+      <div class="progress-card">
+        <p class="eyebrow" id="quiz-name">Κουίζ</p>
+        <div class="progress-chip" id="question-progress">Ερώτηση — / —</div>
+      </div>
+      <div class="chip chip--hollow" id="session-label">Σύνδεση...</div>
+    </header>
+
+    <main class="presenter-stage">
+      <aside class="roster-card">
+        <div class="roster-title">Παίκτες</div>
+        <div id="roster" class="roster-grid"></div>
+      </aside>
+
+      <div class="stage-card" id="intro-card" style="display:none;">
+        <div class="question-text" id="intro-title"></div>
+        <div class="muted" id="intro-meta"></div>
+        <div class="muted" id="intro-instructions" style="white-space:pre-wrap;"></div>
+      </div>
+
+      <div class="stage-card" id="question-card" style="display:none;">
+        <div class="question-text" id="question-text"></div>
+        <div class="media" id="media"></div>
+        <div class="options" id="options"></div>
+        <div class="muted" id="answer-reveal"></div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    // Config: set sessionId manually; if omitted we'll auto-pick when only one exists
+    let sessionId = new URLSearchParams(location.search).get("session") || "";
+    const sessionLabel = document.getElementById("session-label");
+    const quizNameEl = document.getElementById("quiz-name");
+    const questionProgressEl = document.getElementById("question-progress");
+    const introCard = document.getElementById("intro-card");
+    const questionCard = document.getElementById("question-card");
+    const introTitle = document.getElementById("intro-title");
+    const introMeta = document.getElementById("intro-meta");
+    const introInstructions = document.getElementById("intro-instructions");
+    const questionText = document.getElementById("question-text");
+    const mediaEl = document.getElementById("media");
+    const optionsEl = document.getElementById("options");
+    const answerReveal = document.getElementById("answer-reveal");
+    const roster = document.getElementById("roster");
+    let socket;
+    let latestState = null;
+    let answerValues = {};
+    let quizMeta = { name: "Κουίζ", count: null };
+    let lastQuestionId = null;
+    let lastRevealKey = null;
+    const QUIZ_META_KEY = (sid) => `presenter_quiz_meta_${sid || "default"}`;
+
+    sessionLabel.textContent = sessionId ? `Συνεδρία ${sessionId}` : "Καμία συνεδρία";
+
+    async function autoSelectSession() {
+      try {
+        const res = await fetch("/admin/sessions");
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.length === 1) {
+          sessionId = data[0].id;
+          quizMeta = loadQuizMeta();
+          sessionLabel.textContent = `Συνεδρία ${sessionId}`;
+          connect();
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+
+    function connect() {
+      if (!sessionId) {
+        autoSelectSession();
+        return;
+      }
+      quizMeta = loadQuizMeta();
+      if (socket) socket.close();
+      socket = new WebSocket(`${location.origin.replace("http", "ws")}/ws/admin/${sessionId}`);
+      socket.onopen = () => {
+        sessionLabel.textContent = `Συνεδρία ${sessionId}`;
+      };
+      socket.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        if (data.type === "state") {
+          latestState = data.state;
+          answerValues = latestState.answer_values || {};
+          renderState();
+        }
+      };
+      socket.onclose = () => {
+        sessionLabel.textContent = "Αποσυνδέθηκε";
+        setTimeout(connect, 2000);
+      };
+    }
+    connect();
+
+    function renderState() {
+      if (!latestState) {
+        introCard.style.display = "none";
+        questionCard.style.display = "none";
+        return;
+      }
+      if (quizMeta.count === null && sessionId) {
+        quizMeta = loadQuizMeta();
+      }
+      renderRoster();
+      const currentQuestionId = latestState.question?.id;
+      const isNewQuestion = currentQuestionId && currentQuestionId !== lastQuestionId;
+      if (isNewQuestion) {
+        lastQuestionId = currentQuestionId;
+      }
+      if (latestState.stage === "quiz_intro" && latestState.quiz_intro) {
+        const intro = latestState.quiz_intro;
+        quizMeta = {
+          name: intro.quiz_name || "Κουίζ",
+          count: intro.question_count || null,
+        };
+        persistQuizMeta();
+        updateHeaderProgress(null);
+        introCard.style.display = "block";
+        questionCard.style.display = "none";
+        introTitle.textContent = intro.quiz_name || "Κουίζ χωρίς τίτλο";
+        introMeta.textContent = `${intro.question_count || 0} ερωτήσεις`;
+        introInstructions.textContent = intro.quiz_instructions || "";
+        return;
+      }
+      introCard.style.display = "none";
+      if (!latestState.question) {
+        questionCard.style.display = "none";
+        return;
+      }
+      updateHeaderProgress(latestState.active_question_index);
+      const q = latestState.question;
+      questionCard.style.display = "block";
+      questionText.textContent = q.text || "Ερώτηση χωρίς τίτλο";
+      renderMedia(q);
+      renderOptions(q);
+      renderReveal(q);
+    }
+
+    function updateHeaderProgress(activeIndex) {
+      quizNameEl.textContent = quizMeta.name || "Κουίζ";
+      const number = typeof activeIndex === "number" ? activeIndex + 1 : null;
+      const total = quizMeta.count || "—";
+      if (number) {
+        questionProgressEl.textContent = `Ερώτηση ${number} / ${total}`;
+      } else {
+        questionProgressEl.textContent = "Ερωτήσεις";
+      }
+    }
+
+    function renderMedia(q) {
+      mediaEl.innerHTML = "";
+      (q.images || []).forEach(src => {
+        const img = document.createElement("img");
+        img.src = src;
+        img.alt = "Question media";
+        mediaEl.appendChild(img);
+      });
+      (q.audio || []).forEach(src => {
+        const audio = document.createElement("audio");
+        audio.controls = true;
+        audio.src = src;
+        mediaEl.appendChild(audio);
+      });
+    }
+
+    function renderOptions(q) {
+      optionsEl.innerHTML = "";
+      if (q.answer_type !== "multiple_choice") {
+        optionsEl.style.display = "none";
+        return;
+      }
+      optionsEl.style.display = "grid";
+      (q.options || []).forEach(opt => {
+        const div = document.createElement("div");
+        div.className = "option presenter-option";
+        div.textContent = opt;
+        const correctAnswers = Array.isArray(q.correct_answer)
+          ? q.correct_answer
+          : q.correct_answer
+            ? [q.correct_answer]
+            : [];
+        const isCorrect = q.revealed && correctAnswers.includes(opt);
+        if (isCorrect) {
+          div.classList.add("correct-frame", "correct-fill");
+        }
+        optionsEl.appendChild(div);
+      });
+    }
+
+    function renderReveal(q) {
+      const correctAnswers = Array.isArray(q.correct_answer)
+        ? q.correct_answer
+        : q.correct_answer
+          ? [q.correct_answer]
+          : [];
+      const label = q.scoring_type === "black_sheep" ? "Απάντηση πλειοψηφίας" : "Σωστή απάντηση";
+      const answerText = correctAnswers.length ? correctAnswers.join(" / ") : "(δεν έχει οριστεί)";
+      const revealKey = `${q.id}-${q.revealed}-${answerText}-${Object.keys(answerValues || {}).length}`;
+      if (!q.revealed) {
+        answerReveal.innerHTML = "";
+        lastRevealKey = null;
+        return;
+      }
+      if (revealKey === lastRevealKey) return;
+      answerReveal.innerHTML = "";
+      lastRevealKey = revealKey;
+      const card = document.createElement("div");
+      card.className = "reveal-card";
+
+      if (q.answer_type === "numeric") {
+        const title = document.createElement("div");
+        title.className = "reveal-title";
+        title.textContent = "Σωστή απάντηση";
+        const numberEl = document.createElement("div");
+        numberEl.className = "reveal-number";
+        card.appendChild(title);
+        card.appendChild(numberEl);
+        answerReveal.appendChild(card);
+        animateNumber(numberEl, Number(answerText));
+        return;
+      }
+
+      if (q.scoring_type === "black_sheep" && q.answer_type === "multiple_choice") {
+        const counts = {};
+        Object.values(answerValues || {}).forEach(ans => {
+          if (!ans) return;
+          counts[ans] = (counts[ans] || 0) + 1;
+        });
+        const bars = document.createElement("div");
+        bars.className = "reveal-bars";
+        const maxCount = Math.max(1, ...Object.values(counts));
+        (q.options || correctAnswers).forEach(opt => {
+          const barWrap = document.createElement("div");
+          barWrap.className = "bar-wrap";
+          const barArea = document.createElement("div");
+          barArea.className = "bar-area";
+          const bar = document.createElement("div");
+          bar.className = "bar";
+          bar.style.height = "0%";
+          const labelEl = document.createElement("div");
+          labelEl.className = "bar-label";
+          labelEl.textContent = opt;
+          const valueEl = document.createElement("div");
+          valueEl.className = "bar-value";
+          valueEl.textContent = "0";
+          barArea.appendChild(bar);
+          barWrap.appendChild(barArea);
+          barWrap.appendChild(valueEl);
+          barWrap.appendChild(labelEl);
+          bars.appendChild(barWrap);
+          animateBar(bar, valueEl, counts[opt] || 0, maxCount);
+        });
+        const title = document.createElement("div");
+        title.className = "reveal-title";
+        title.textContent = "Πλειοψηφία";
+        card.appendChild(title);
+        card.appendChild(bars);
+        answerReveal.appendChild(card);
+        return;
+      }
+
+      const title = document.createElement("div");
+      title.className = "reveal-title";
+      title.textContent = label;
+      const value = document.createElement("div");
+      value.className = "reveal-answer";
+      value.textContent = answerText;
+      card.appendChild(title);
+      card.appendChild(value);
+      answerReveal.appendChild(card);
+    }
+
+    function renderRoster() {
+      if (!latestState?.players) return;
+      const players = latestState.players;
+      const answeredIds = new Set(Object.keys(latestState.answers || {}));
+      roster.innerHTML = players
+        .map(p => {
+          const answered = answeredIds.has(p.id);
+          return `<div class="roster-chip ${answered ? "answered" : ""}">${p.name || "Παίκτης"}</div>`;
+        })
+        .join("");
+    }
+
+    function loadQuizMeta() {
+      if (!sessionId) return quizMeta;
+      try {
+        const stored = localStorage.getItem(QUIZ_META_KEY(sessionId));
+        if (stored) return JSON.parse(stored);
+      } catch {
+        /* ignore */
+      }
+      return quizMeta;
+    }
+
+    function persistQuizMeta() {
+      if (!sessionId) return;
+      try {
+        localStorage.setItem(QUIZ_META_KEY(sessionId), JSON.stringify(quizMeta));
+      } catch {
+        /* ignore */
+      }
+    }
+
+    function animateNumber(el, target) {
+      if (Number.isNaN(target)) {
+        el.textContent = target;
+        return;
+      }
+      const duration = 1400;
+      const start = performance.now();
+      const startVal = 0;
+      const step = (now) => {
+        const t = Math.min(1, (now - start) / duration);
+        const eased = t * t * (3 - 2 * t);
+        const val = Math.round(startVal + (target - startVal) * eased);
+        el.textContent = val;
+        if (t < 1) {
+          requestAnimationFrame(step);
+        }
+      };
+      requestAnimationFrame(step);
+    }
+
+    function animateCount(el, target) {
+      const duration = 1200;
+      const start = performance.now();
+      const step = (now) => {
+        const t = Math.min(1, (now - start) / duration);
+        const eased = t * t * (3 - 2 * t);
+        const val = Math.round((target) * eased);
+        el.textContent = val;
+        if (t < 1) {
+          requestAnimationFrame(step);
+        }
+      };
+      requestAnimationFrame(step);
+    }
+
+    function animateBar(barEl, valueEl, targetCount, maxCount) {
+      const duration = 1200;
+      const start = performance.now();
+      const step = (now) => {
+        const t = Math.min(1, (now - start) / duration);
+        const eased = t * t * (3 - 2 * t);
+        const current = Math.round(targetCount * eased);
+        const height = (targetCount === 0 ? 0 : (current / maxCount) * 100);
+        barEl.style.height = `${height}%`;
+        valueEl.textContent = current;
+        if (t < 1) {
+          requestAnimationFrame(step);
+        }
+      };
+      requestAnimationFrame(step);
+    }
+  </script>
+</body>
+
+</html>

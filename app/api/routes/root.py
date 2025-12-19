@@ -14,3 +14,9 @@ async def root():
 async def admin_page():
     with open("static/admin.html", "r", encoding="utf-8") as f:
         return f.read()
+
+
+@router.get("/presenter", response_class=HTMLResponse)
+async def presenter_page():
+    with open("static/presenter.html", "r", encoding="utf-8") as f:
+        return f.read()

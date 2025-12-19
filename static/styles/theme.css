@@ -1,0 +1,93 @@
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700&display=swap');
+
+:root {
+  /* ======================================================
+     BACKGROUND — BRIGHT CANDY RED DAY MODE
+     ====================================================== */
+  --bg-fallback: radial-gradient(circle at 18% 18%, #ff8092 0%, #ff4b6a 32%, #f22c4a 55%, #c1122f 78%, #6f0b1c 100%);
+  --bg-image: url("/static/christmas%20wallpaper%20aesthetic.jpg");
+  /* hero wallpaper (cover, aspect preserved, center) */
+  --overlay-color: rgba(255, 228, 235, 0);
+  /* warm glaze over wallpaper */
+  --overlay-opacity: 1;
+  /* lower to lighten overlay */
+  --overlay-blur: 2px;
+  /* blur amount on wallpaper */
+
+  /* ======================================================
+     TEXT — DEEP COCOA ON LIGHT SURFACES
+     ====================================================== */
+  --text-primary: #2f0f1a;
+  /* main text */
+  --text-secondary: #4d1f2c;
+  /* subtitles */
+  --text-muted: #7a4d59;
+  /* helper text */
+  --text-disabled: #b07b8a;
+  /* disabled */
+
+  /* ======================================================
+     CANDY-CHRISTMAS ACCENTS
+     ====================================================== */
+  --berry: #ff3d5b;
+  /* primary buttons/highlights (candy red) */
+  --berry-hover: #e02a46;
+  /* hover/active berry */
+  --berry-deep: #b11433;
+  /* pressed berry */
+  --peppermint: #ffffff;
+  /* candy stripes */
+  --forest: #1fbf72;
+  /* success, correct states */
+  --forest-deep: #0b6b3d;
+  /* dark success */
+  --mint: #ccffe6;
+  /* light success accent */
+  --gold: #ffb347;
+  /* timers, focus outlines */
+
+  /* ======================================================
+     SURFACES — CREAMY CARDS
+     ====================================================== */
+  --card-surface: rgba(255, 250, 243, 0.95);
+  /* card backgrounds */
+  --card-hover: rgba(255, 255, 255, 0.98);
+  /* hover */
+  --card-border: rgba(247, 187, 201, 0.9);
+  /* card outlines */
+  --card-glow: 0 18px 55px rgba(193, 36, 55, 0.22);
+  /* card shadow */
+  --muted: rgba(77, 31, 44, 0.7);
+  /* helper/label text */
+
+  /* ======================================================
+     INPUTS / INTERACTIVE
+     ====================================================== */
+  --input-bg: #fff7f0;
+  --input-border: #f7bdc9;
+  --input-border-focus: var(--berry);
+  --input-placeholder: #a06773;
+  --focus-ring: 0 0 0 4px rgba(255, 61, 91, 0.35);
+
+  /* ======================================================
+     FEEDBACK STATES (BACKGROUNDS + BADGES)
+     ====================================================== */
+  --success-bg: #e9fff2;
+  --success-text: #0b6b3d;
+  --error-bg: #ffe6ea;
+  --error-text: #b11433;
+  --warning-bg: #fff4cf;
+  --warning-text: #9a7b00;
+
+  /* ======================================================
+     RADII & SPACING — ROUND & FRIENDLY
+     ====================================================== */
+  --radius-lg: 22px;
+  --radius-md: 16px;
+  --radius-sm: 12px;
+
+  --gap-xs: 8px;
+  --gap-sm: 12px;
+  --gap: 16px;
+  --gap-lg: 24px;
+}

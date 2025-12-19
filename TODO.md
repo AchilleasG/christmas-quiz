@@ -4,6 +4,5 @@
 - [x] Reconnect as doenst work
 - [x] Allow declaring a winner at any point (manual end-of-quiz action that reveals scores and locks input).
 - [ ] Verify timed speed-bonus scoring curve and display (ensure multiplier behaves and UI shows expected decimals).
-- [ ] Make evetyhign mobile firendly
-- [ ] Add nice naiamtion trasnition between quizes
+- [x] Make evetyhign mobile firendly
 - [ ] Build presenter view (separate HTML distinct from admin/player)

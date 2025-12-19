@@ -1,166 +1,95 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="el">
 
 <head>
   <meta charset="UTF-8">
-  <title>Christmas Quiz - Player</title>
+  <title>Χριστουγεννιάτικο Κουίζ - Παίκτης</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      background: #0b1d2b;
-      color: #f4f4f4;
-      margin: 0;
-      padding: 0;
-    }
-
-    header {
-      background: #1f3b4d;
-      padding: 12px 16px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-
-    main {
-      padding: 16px;
-    }
-
-    .card {
-      background: #123047;
-      border-radius: 8px;
-      padding: 16px;
-      margin-bottom: 12px;
-    }
-
-    .input-row {
-      display: flex;
-      gap: 8px;
-      margin-bottom: 8px;
-      flex-wrap: wrap;
-    }
-
-    button {
-      background: #e13f3f;
-      border: none;
-      color: white;
-      padding: 10px 14px;
-      border-radius: 6px;
-      cursor: pointer;
-    }
-
-    button:disabled {
-      opacity: 0.6;
-      cursor: not-allowed;
-    }
-
-    input,
-    select {
-      padding: 10px;
-      border-radius: 6px;
-      border: 1px solid #2f4c62;
-      background: #0f2639;
-      color: white;
-    }
-
-    .options {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-      gap: 8px;
-    }
-
-    .option {
-      background: #1f3b4d;
-      border: 2px solid #2f536d;
-      padding: 12px;
-      border-radius: 8px;
-      cursor: pointer;
-    }
-
-    .option.selected {
-      border-color: #e13f3f;
-      box-shadow: 0 0 0 2px #e13f3f55;
-    }
-
-    .option.correct-frame {
-      border-color: #28d27c;
-      box-shadow: 0 0 0 2px #28d27c55;
-    }
-
-    .option.correct-fill {
-      background: #1c5238;
-    }
-
-    .option.wrong {
-      background: #4d1f2a;
-      border-color: #e13f3f;
-    }
-
-    .media img {
-      width: 100%;
-      max-height: 320px;
-      object-fit: contain;
-      border-radius: 8px;
-      background: #0f2639;
-      border: 1px solid #2f4c62;
-    }
-
-    .media {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-      max-height: 360px;
-      overflow: hidden;
-    }
-
-    .timer {
-      font-weight: bold;
-    }
-  </style>
+  <link rel="stylesheet" href="/static/styles/player.css">
 </head>
 
 <body>
-  <header>
-    <div>Christmas Quiz</div>
-    <div id="player-label"></div>
-  </header>
-  <main>
-    <div class="card" id="join-card">
-      <div class="input-row">
-        <div style="flex:1">
-          <div id="sessions-list"></div>
-          <button id="refresh-sessions" style="margin-top:6px;">Refresh sessions</button>
-        </div>
-        <input id="session-id" placeholder="Session code (8 chars)">
-        <input id="player-name" placeholder="Your name">
-        <select id="reconnect-select">
-          <option value="">Reconnect as...</option>
-        </select>
-        <button id="join-btn">Join</button>
-      </div>
-      <small id="status"></small>
+  <div class="snow-layer"></div>
+  <div id="verdict-overlay" class="verdict-overlay" style="display:none;">
+    <div class="verdict-box">
+      <div id="verdict-icon" class="verdict-icon"></div>
+      <div id="verdict-title" class="verdict-title"></div>
+      <div id="verdict-copy" class="verdict-copy"></div>
     </div>
-
-    <div class="card" id="question-card" style="display:none;">
-      <div id="question-text"></div>
-      <div class="media" id="media"></div>
-      <div class="timer" id="timer"></div>
-      <div id="answer-area"></div>
-      <div id="reveal-area" style="margin-top:8px; color:#cdd7e0;"></div>
-      <button id="submit-btn" style="margin-top:12px;">Submit</button>
-    </div>
-
-    <div class="card" id="intro-card" style="display:none;">
-      <div id="intro-text"></div>
-      <div id="intro-meta" style="color:#cdd7e0;"></div>
-      <div id="intro-instructions" style="color:#cdd7e0; white-space:pre-wrap; margin-top:6px;"></div>
-    </div>
-
-  <div class="card" id="score-card" style="display:none; color:#cdd7e0;">
-    <div><strong>Scores</strong></div>
-    <div id="scoreboard" style="margin-top:8px;"></div>
   </div>
-  </main>
+  <div id="guess-overlay" class="guess-overlay" style="display:none;">
+    <div class="guess-box">
+      <div class="guess-title">Απαντήσεις όλων</div>
+      <div id="guess-list" class="guess-list"></div>
+    </div>
+  </div>
+  <div class="page-shell">
+    <header class="topbar">
+      <div class="brand">
+        <div class="progress-card">
+          <p class="eyebrow" id="quiz-name">Χριστουγεννιάτικο Κουίζ</p>
+          <div class="progress-chip" id="question-progress">Ερώτηση — / —</div>
+        </div>
+      </div>
+      <div class="chip chip--hollow" id="player-label">Μη συνδεδεμένος</div>
+    </header>
+
+    <main class="layout">
+      <section class="card" id="join-card">
+        <div class="card-head">
+          <div>
+            <p class="eyebrow">Σύνδεση</p>
+            <h2>Μπες στο τρέχον παιχνίδι</h2>
+          </div>
+          <div class="status status--alert" id="status">Αναμονή σύνδεσης</div>
+        </div>
+        <div class="card-divider"></div>
+        <div class="join-grid">
+          <div class="session-column">
+            <div class="card-head">
+              <p class="muted">Ενεργές συνεδρίες</p>
+              <button class="btn-ghost" id="refresh-sessions" type="button">Ανανέωση</button>
+            </div>
+            <div class="session-list" id="sessions-list"></div>
+          </div>
+          <div class="stack">
+            <label class="field">
+              <span>Το όνομά σου</span>
+              <input id="player-name" placeholder="Το όνομά σου">
+            </label>
+            <label class="field">
+              <span>Επανένωση ως</span>
+              <select id="reconnect-select">
+                <option value="">Επανένωση ως...</option>
+              </select>
+            </label>
+            <button id="join-btn" type="button">Σύνδεση</button>
+          </div>
+        </div>
+        <p class="help-text">Διάλεξε μια ενεργή συνεδρία, μετά επανένωσε παίκτη ή γράψε το όνομά σου για νέα είσοδο.</p>
+      </section>
+
+      <section class="card" id="question-card" style="display:none;">
+        <div class="question-text" id="question-text"></div>
+        <div class="media" id="media"></div>
+        <div class="timer" id="timer"></div>
+        <div id="answer-area"></div>
+        <div id="reveal-area"></div>
+        <button id="submit-btn" type="button" style="margin-top:12px; width:100%;">Υποβολή</button>
+      </section>
+
+      <section class="card" id="intro-card" style="display:none;">
+        <div class="question-text" id="intro-text"></div>
+        <div id="intro-meta"></div>
+        <div id="intro-instructions"></div>
+      </section>
+
+      <section class="card" id="score-card" style="display:none;">
+        <div class="question-text">Βαθμολογίες</div>
+        <div class="scoreboard" id="scoreboard"></div>
+      </section>
+    </main>
+  </div>
 
   <script>
     let socket;
@@ -174,7 +103,6 @@
     let answerValues = {};
 
     const statusEl = document.getElementById("status");
-    const sessionInput = document.getElementById("session-id");
     const playerNameInput = document.getElementById("player-name");
     const joinCard = document.getElementById("join-card");
     const joinBtn = document.getElementById("join-btn");
@@ -192,18 +120,36 @@
     const submitBtn = document.getElementById("submit-btn");
     const reconnectSelect = document.getElementById("reconnect-select");
     const playerLabel = document.getElementById("player-label");
-    const myScoreEl = document.getElementById("my-score");
+    const quizNameEl = document.getElementById("quiz-name");
+    const questionProgressEl = document.getElementById("question-progress");
     const scoreboardEl = document.getElementById("scoreboard");
     const scoreCard = document.getElementById("score-card");
+    let selectedSessionName = "";
+    let verdictTimeout;
+    let guessTimeout;
+    let guessListKey = null;
+    let verdictShownKey = null;
+    let quizMeta = { name: "Κουίζ", count: null };
+    const QUIZ_META_KEY = (sid) => `quiz_meta_${sid || "default"}`;
+
+    const setStatus = (text, tone) => {
+      statusEl.textContent = text;
+      statusEl.className = tone ? `status status--${tone}` : "status";
+    };
+    setStatus("Αναμονή σύνδεσης", "alert");
 
     joinBtn.onclick = () => {
-      sessionId = sessionInput.value.trim();
-      const name = playerNameInput.value.trim();
-      const reconnectAs = reconnectSelect.value || null;
       if (!sessionId) {
-        statusEl.textContent = "Enter a session code";
+        setStatus("Διάλεξε συνεδρία από τη λίστα", "alert");
         return;
       }
+      const name = playerNameInput.value.trim();
+      const reconnectAs = reconnectSelect.value || null;
+      if (!name && !reconnectAs) {
+        setStatus("Γράψε όνομα ή διάλεξε επανένωση", "alert");
+        return;
+      }
+      setStatus(`Σύνδεση στη συνεδρία ${selectedSessionName || ""}`.trim(), "alert");
       startSocket({ name, player_id: reconnectAs });
     };
 
@@ -212,7 +158,7 @@
       lastSubmittedAnswer = selectedAnswer;
       const payload = { type: "answer", player_id: playerId, answer: selectedAnswer };
       socket.send(JSON.stringify(payload));
-      statusEl.textContent = "Answer submitted";
+      setStatus("Απάντηση εστάλη", "live");
       submitBtn.style.display = "none";
     };
 
@@ -220,17 +166,42 @@
       try {
         const res = await fetch("/admin/sessions");
         const data = await res.json();
-        sessionsList.innerHTML = data
-          .map(s => `<div style="margin-bottom:4px; cursor:pointer;" onclick="pickSession('${s.id}')">${s.name} (${s.id})</div>`)
-          .join("");
+        sessionsList.innerHTML = data.length
+          ? data
+            .map(s => `<button class="session-pill" type="button" data-session="${s.id}" onclick="pickSession('${s.id}', '${s.name?.replace(/'/g, "\\'") || ''}')">
+              <div>
+                <div class="score-name">${s.name || "Συνεδρία"}</div>
+              </div>
+              <span class="muted">ΠΑΤΗΣΕ ΓΙΑ ΣΥΝΔΕΣΗ</span>
+            </button>`)
+            .join("")
+          : '<div class="muted">Καμία ενεργή συνεδρία</div>';
+        // Auto-select the first available session if none is chosen
+        if (data.length && !sessionId) {
+          pickSession(data[0].id, data[0].name);
+        } else {
+          // Clear selection if the previously selected session no longer exists
+          const stillExists = data.some(s => s.id === sessionId);
+          if (!stillExists) {
+            sessionId = null;
+            selectedSessionName = "";
+          }
+          highlightSelectedSession(sessionId);
+        }
       } catch {
-        sessionsList.innerHTML = "Failed to load sessions";
+        sessionsList.innerHTML = '<div class="muted">Αποτυχία φόρτωσης συνεδριών</div>';
       }
     }
     refreshSessions.onclick = loadSessions;
-    window.pickSession = (id) => {
-      sessionInput.value = id;
+    window.pickSession = (id, name) => {
+      sessionId = id;
+      selectedSessionName = name || "";
+      setStatus(`Έτοιμος για: ${selectedSessionName || id}`, "live");
+      highlightSelectedSession(id);
+      updateReconnectList([]);
       fetchReconnectList(id);
+      quizMeta = loadQuizMeta();
+      updateHeaderProgress(null);
     };
     loadSessions();
 
@@ -248,25 +219,22 @@
       }
     }
 
-    let reconnectLookup;
-    sessionInput.addEventListener("input", (e) => {
-      const sid = e.target.value.trim();
-      clearTimeout(reconnectLookup);
-      if (!sid) {
-        updateReconnectList([]);
-        return;
-      }
-    reconnectLookup = setTimeout(() => fetchReconnectList(sid), 200);
-  });
+    reconnectSelect.addEventListener("focus", () => {
+      if (sessionId) fetchReconnectList(sessionId);
+    });
 
-  sessionInput.addEventListener("blur", (e) => fetchReconnectList(e.target.value.trim()));
-  reconnectSelect.addEventListener("focus", () => {
-    const sid = sessionInput.value.trim();
-    if (sid) fetchReconnectList(sid);
-  });
+    function highlightSelectedSession(id) {
+      document.querySelectorAll(".session-pill").forEach(btn => {
+        if (btn.dataset.session === id) {
+          btn.classList.add("selected");
+        } else {
+          btn.classList.remove("selected");
+        }
+      });
+    }
 
   function startSocket({ name, player_id }) {
-    if (socket) socket.close();
+      if (socket) socket.close();
       socket = new WebSocket(`${location.origin.replace("http", "ws")}/ws/player/${sessionId}`);
       socket.onopen = () => {
         socket.send(JSON.stringify({ type: "join", name, player_id }));
@@ -275,8 +243,8 @@
         const data = JSON.parse(event.data);
         if (data.type === "welcome") {
           playerId = data.player.id;
-          playerLabel.textContent = `${data.player.name} (${playerId})`;
-          statusEl.textContent = "Connected";
+          playerLabel.textContent = `${data.player.name}`;
+          setStatus("Συνδεδεμένος", "live");
           joinCard.style.display = "none";
         }
         if (data.type === "state") {
@@ -289,97 +257,126 @@
         }
       };
       socket.onclose = () => {
-        statusEl.textContent = "Disconnected";
+        setStatus("Αποσυνδέθηκε", "alert");
         joinCard.style.display = "block";
         if (sessionId) {
-          sessionInput.value = sessionId;
           fetchReconnectList(sessionId);
         }
       };
     }
 
+    document.getElementById("guess-overlay").addEventListener("click", () => {
+      document.getElementById("guess-overlay").style.display = "none";
+      clearTimeout(guessTimeout);
+    });
+
     function renderState() {
-    if (!latestState) {
-      questionCard.style.display = "none";
-      introCard.style.display = "none";
-      scoreCard.style.display = "none";
-      return;
+      if (!latestState) {
+        questionCard.style.display = "none";
+        introCard.style.display = "none";
+        scoreCard.style.display = "none";
+        return;
+      }
+      if (quizMeta.count === null && sessionId) {
+        quizMeta = loadQuizMeta();
+      }
+      // Clear overlays when the question changes
+      const currentQuestionId = latestState.question?.id;
+      if (currentQuestionId && currentQuestionId !== lastQuestionId) {
+        hideOverlays();
       }
       if (latestState.stage === "quiz_intro" && latestState.quiz_intro) {
         const intro = latestState.quiz_intro;
+        quizMeta = {
+          name: intro.quiz_name || "Χωρίς τίτλο",
+          count: intro.question_count || null,
+        };
+        persistQuizMeta();
+        updateHeaderProgress(null);
         introCard.style.display = "block";
         questionCard.style.display = "none";
-        introText.textContent = `Up next: ${intro.quiz_name || "Untitled quiz"}`;
-        introMeta.textContent = `${intro.question_count || 0} questions`;
+        introText.textContent = `Έρχεται: ${intro.quiz_name || "Κουίζ χωρίς τίτλο"}`;
+        introMeta.textContent = `${intro.question_count || 0} ερωτήσεις`;
         document.getElementById("intro-instructions").textContent = intro.quiz_instructions || "";
         return;
       }
       introCard.style.display = "none";
-    if (!latestState.question) {
-      questionCard.style.display = "none";
-      // Show scores only once quiz flow is done
+      if (!latestState.question) {
+        questionCard.style.display = "none";
+        // Show scores only once quiz flow is done
+        if (latestState.status === "finished" && latestState.scores_revealed) {
+          scoreCard.style.display = "block";
+          renderScoreboard();
+        } else {
+          scoreCard.style.display = "none";
+        }
+        return;
+      }
       if (latestState.status === "finished" && latestState.scores_revealed) {
         scoreCard.style.display = "block";
         renderScoreboard();
       } else {
         scoreCard.style.display = "none";
       }
-      return;
-    }
-    if (latestState.status === "finished" && latestState.scores_revealed) {
-      scoreCard.style.display = "block";
-      renderScoreboard();
-    } else {
-      scoreCard.style.display = "none";
-    }
-    const q = latestState.question;
-    const renderKey = `${q.id}-${q.revealed ? "revealed" : "open"}`;
-    const isNewQuestion = q.id !== lastQuestionId;
-    if (isNewQuestion) {
-      lastQuestionId = q.id;
-      lastSubmittedAnswer = null;
-    }
-    questionCard.style.display = "block";
-    questionText.textContent = q.text || "Untitled question";
-    renderMedia(q);
-    if (renderKey !== window.__lastRenderKey) {
-      renderAnswerArea(q);
+      const q = latestState.question;
+      const renderKey = `${q.id}-${q.revealed ? "revealed" : "open"}`;
+      const isNewQuestion = q.id !== lastQuestionId;
+      if (isNewQuestion) {
+        lastQuestionId = q.id;
+        lastSubmittedAnswer = null;
+      }
+      updateHeaderProgress(latestState.active_question_index);
+      questionCard.style.display = "block";
+      questionText.textContent = q.text || "Ερώτηση χωρίς τίτλο";
+      renderMedia(q);
+      if (renderKey !== window.__lastRenderKey) {
+        renderAnswerArea(q);
+        window.__lastRenderKey = renderKey;
+      }
       renderReveal(q);
-      window.__lastRenderKey = renderKey;
+      updateTimer(q);
     }
-    updateTimer(q);
-  }
 
     function renderScoreboard() {
       const players = latestState?.players || [];
       scoreboardEl.innerHTML = players
         .slice()
         .sort((a, b) => (b.score || 0) - (a.score || 0))
-        .map(p => `<div>${p.name || "Player"}: ${p.score || 0} ${!p.connected ? "(disconnected)" : ""}</div>`)
+        .map((p, idx) => {
+          const disconnected = !p.connected ? '<div class="score-note">Αποσυνδεδεμένος</div>' : "";
+          return `<div class="score-row">
+            <div class="score-rank">#${idx + 1}</div>
+            <div>
+              <div class="score-name">${p.name || "Παίκτης"}</div>
+              ${disconnected}
+            </div>
+            <div class="score-value">${p.score || 0} βαθμοί</div>
+          </div>`;
+        })
         .join("");
     }
 
-  function renderMedia(q) {
-    mediaEl.innerHTML = "";
-    (q.images || []).forEach(src => {
-      const img = document.createElement("img");
-      img.src = src;
-      img.alt = "Question media";
-      mediaEl.appendChild(img);
-    });
-    (q.audio || []).forEach(src => {
-      const audio = document.createElement("audio");
-      audio.controls = true;
+    function renderMedia(q) {
+      mediaEl.innerHTML = "";
+      (q.images || []).forEach(src => {
+        const img = document.createElement("img");
+        img.src = src;
+        img.alt = "Υλικό ερώτησης";
+        mediaEl.appendChild(img);
+      });
+      (q.audio || []).forEach(src => {
+        const audio = document.createElement("audio");
+        audio.controls = true;
         audio.src = src;
         mediaEl.appendChild(audio);
       });
     }
 
-  function renderAnswerArea(q) {
-    answerArea.innerHTML = "";
-    selectedAnswer = lastSubmittedAnswer || null;
-    submitBtn.disabled = true;
-    submitBtn.style.display = "block";
+    function renderAnswerArea(q) {
+      answerArea.innerHTML = "";
+      selectedAnswer = lastSubmittedAnswer || null;
+      submitBtn.disabled = true;
+      submitBtn.style.display = "block";
       if (q.answer_type === "multiple_choice") {
         const wrap = document.createElement("div");
         wrap.className = "options";
@@ -417,9 +414,14 @@
       } else {
         const input = document.createElement("input");
         input.type = q.answer_type === "numeric" ? "number" : "text";
-        input.placeholder = "Your answer";
+        input.placeholder = "Η απάντησή σου";
         input.value = lastSubmittedAnswer || "";
         input.disabled = q.revealed;
+        const myResult = answerResults[playerId];
+        input.classList.remove("input-correct", "input-wrong");
+        if (q.revealed && myResult !== undefined) {
+          input.classList.add(myResult ? "input-correct" : "input-wrong");
+        }
         input.oninput = (e) => {
           selectedAnswer = e.target.value;
           lastSubmittedAnswer = selectedAnswer;
@@ -441,23 +443,28 @@
       if (q.answer_type === "numeric") {
         const playersById = {};
         (latestState.players || []).forEach(p => { playersById[p.id] = p; });
-        revealArea.innerHTML = `<div>Correct answer: ${q.correct_answer || "(not set)"}</div>`;
+        revealArea.innerHTML = `<div>Σωστή απάντηση: ${q.correct_answer || "(δεν έχει οριστεί)"}</div>`;
         const allAnswers = [];
         if (q.scoring_type === "closest") {
           (latestState.closest_results || []).forEach((entry, idx) => {
-            const name = playersById[entry.player_id]?.name || entry.player_id || "Player";
-            const ansVal = entry.answer ?? "(no answer)";
+            const name = playersById[entry.player_id]?.name || entry.player_id || "Παίκτης";
+            const ansVal = entry.answer ?? "(καμία απάντηση)";
             allAnswers.push(`${idx + 1}. ${name}: ${ansVal}`);
           });
         } else {
           Object.entries(answerValues || {}).forEach(([pid, ans]) => {
-            const name = playersById[pid]?.name || pid || "Player";
-            const ansVal = ans ?? "(no answer)";
+            const name = playersById[pid]?.name || pid || "Παίκτης";
+            const ansVal = ans ?? "(καμία απάντηση)";
             allAnswers.push(`${name}: ${ansVal}`);
           });
         }
         if (allAnswers.length) {
-          revealArea.innerHTML += `<div style="margin-top:6px;">${allAnswers.join("<br>")}</div>`;
+          revealArea.innerHTML += `<div class="reveal-list">${allAnswers.join("<br>")}</div>`;
+          const overlayKey = `${q.id}-guess-list`;
+          if (overlayKey !== guessListKey) {
+            guessListKey = overlayKey;
+            showGuessOverlay(allAnswers);
+          }
         }
         return;
       }
@@ -467,34 +474,142 @@
         : q.correct_answer
         ? [q.correct_answer]
         : [];
-      const label = q.scoring_type === "black_sheep" ? "Majority answer(s)" : "Correct answer";
-      const answerText = correctAnswers.length ? correctAnswers.join(" / ") : "(not set)";
-      const verdict = myResult === undefined ? "" : myResult ? "You got it right!" : "You got it wrong.";
+      const label = q.scoring_type === "black_sheep" ? "Απάντηση πλειοψηφίας" : "Σωστή απάντηση";
+      const answerText = correctAnswers.length ? correctAnswers.join(" / ") : "(δεν έχει οριστεί)";
+      const verdict = myResult === undefined ? "" : myResult ? "Το βρήκες!" : "Λάθος απάντηση.";
       revealArea.textContent = `${label}: ${answerText} ${verdict}`;
+      if (verdict) {
+        setStatus(verdict, myResult ? "live" : "alert");
+        const verdictKey = `${q.id}-${myResult}`;
+        if (verdictKey !== verdictShownKey) {
+          verdictShownKey = verdictKey;
+          showVerdict(verdict, !!myResult, label, answerText);
+        }
+      }
     }
 
     function updateTimer(q) {
-    if (!q.closes_at) {
-      timerEl.textContent = "";
-      return;
+      if (!q.closes_at) {
+        timerEl.textContent = "";
+        return;
+      }
+      const now = new Date(latestState.now).getTime();
+      const closes = new Date(q.closes_at).getTime();
+      const remaining = Math.max(0, Math.round((closes - now) / 1000));
+      timerEl.textContent = `Χρόνος: ${remaining}s`;
+      if (!q.revealed) {
+        submitBtn.disabled = remaining <= 0 || !selectedAnswer;
+      }
     }
-    const now = new Date(latestState.now).getTime();
-    const closes = new Date(q.closes_at).getTime();
-    const remaining = Math.max(0, Math.round((closes - now) / 1000));
-    timerEl.textContent = `Time left: ${remaining}s`;
-    if (!q.revealed) {
-      submitBtn.disabled = remaining <= 0 || !selectedAnswer;
-    }
-  }
 
     function updateReconnectList(disconnected) {
-      reconnectSelect.innerHTML = '<option value="">Reconnect as...</option>';
+      reconnectSelect.innerHTML = '<option value="">Επανένωση ως...</option>';
       disconnected.forEach(p => {
         const opt = document.createElement("option");
         opt.value = p.id;
         opt.textContent = `${p.name} (${p.id})`;
-        reconnectSelect.appendChild(opt);
+      reconnectSelect.appendChild(opt);
       });
+    }
+
+    function hideOverlays() {
+      document.getElementById("verdict-overlay").style.display = "none";
+      document.getElementById("guess-overlay").style.display = "none";
+      clearTimeout(verdictTimeout);
+      guessListKey = null;
+      verdictShownKey = null;
+    }
+
+    function updateHeaderProgress(activeIndex) {
+      quizNameEl.textContent = quizMeta.name || "Κουίζ";
+      const number = typeof activeIndex === "number" ? activeIndex + 1 : null;
+      const total = quizMeta.count || "—";
+      if (number) {
+        questionProgressEl.textContent = `Ερώτηση ${number} / ${total}`;
+      } else {
+        questionProgressEl.textContent = "Ερωτήσεις";
+      }
+    }
+
+    function loadQuizMeta() {
+      if (!sessionId) return quizMeta;
+      try {
+        const stored = localStorage.getItem(QUIZ_META_KEY(sessionId));
+        if (stored) {
+          return JSON.parse(stored);
+        }
+      } catch {
+        /* ignore */
+      }
+      return quizMeta;
+    }
+
+    function persistQuizMeta() {
+      if (!sessionId) return;
+      try {
+        localStorage.setItem(QUIZ_META_KEY(sessionId), JSON.stringify(quizMeta));
+      } catch {
+        /* ignore */
+      }
+    }
+
+    function showVerdict(text, isCorrect, label, answer) {
+      const overlay = document.getElementById("verdict-overlay");
+      const title = document.getElementById("verdict-title");
+      const copy = document.getElementById("verdict-copy");
+      const icon = document.getElementById("verdict-icon");
+      const box = overlay.querySelector(".verdict-box");
+      title.textContent = isCorrect ? "Μπράβο, το βρήκες!" : "Δεν έπιασε αυτή τη φορά";
+      copy.textContent = `${label}: ${answer}`;
+      icon.innerHTML = isCorrect
+        ? `<svg viewBox="0 0 72 72" aria-hidden="true">
+            <defs>
+              <linearGradient id="grad-success" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="var(--forest)" />
+                <stop offset="100%" stop-color="var(--mint)" />
+              </linearGradient>
+            </defs>
+            <circle cx="36" cy="36" r="32" fill="url(#grad-success)" />
+            <path d="M22 37.5 32 48l20-24" fill="none" stroke="var(--peppermint)" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>`
+        : `<svg viewBox="0 0 72 72" aria-hidden="true">
+            <defs>
+              <linearGradient id="grad-error" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="var(--berry)" />
+                <stop offset="100%" stop-color="var(--berry-deep)" />
+              </linearGradient>
+            </defs>
+            <circle cx="36" cy="36" r="32" fill="url(#grad-error)" />
+            <path d="M27 27l18 18m0-18-18 18" stroke="var(--peppermint)" stroke-width="7" stroke-linecap="round"/>
+          </svg>`;
+      box.classList.remove("success", "error");
+      box.classList.add(isCorrect ? "success" : "error");
+      overlay.style.display = "flex";
+      clearTimeout(verdictTimeout);
+      verdictTimeout = setTimeout(() => {
+        overlay.style.display = "none";
+      }, 2600);
+    }
+
+    function showGuessOverlay(allAnswers) {
+      const overlay = document.getElementById("guess-overlay");
+      const list = document.getElementById("guess-list");
+      list.innerHTML = allAnswers
+        .map((line, idx) => {
+          const [name, ...rest] = line.split(":");
+          const value = rest.join(":").trim();
+          return `<div class="guess-row">
+            <div class="guess-rank">#${idx + 1}</div>
+            <div class="guess-name">${name || "Παίκτης"}</div>
+            <div class="guess-value">${value || ""}</div>
+          </div>`;
+        })
+        .join("");
+      overlay.style.display = "flex";
+      clearTimeout(guessTimeout);
+      guessTimeout = setTimeout(() => {
+        overlay.style.display = "none";
+      }, 8000);
     }
   </script>
 </body>
