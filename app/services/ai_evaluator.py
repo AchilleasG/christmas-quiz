@@ -28,7 +28,8 @@ async def evaluate_text_answer(
     prompt = (
         "You are grading a quiz answer. Decide ONLY true/false if the user's answer is acceptable. "
         "Accept reasonable variants, pluralization, small typos, or added 'the', 'a', punctuation."
-        "Also potnetially the user might repsond i nenglish or greek, both should be deemed correct if the answer is correct."
+        "Also potentially the user might respond in English or Greek, both should be deemed correct if the answer is correct."
+        "Some answers might be loose translations of the target. Always prefer to grant the point if unsure\n"
         "Be lenient and judge like a generous host.\n\n"
         f"Target: {target_answer}\n"
         f"User: {user_answer}\n"
@@ -56,7 +57,9 @@ async def evaluate_text_answer(
                 json=payload,
             )
         if resp.status_code != 200:
-            logger.warning("AI eval failed status: %s body: %s", resp.status_code, resp.text)
+            logger.warning(
+                "AI eval failed status: %s body: %s", resp.status_code, resp.text
+            )
             return user_answer.strip().lower() == target_answer.strip().lower()
         data = resp.json()
         content = data["choices"][0]["message"]["content"].strip().lower()
