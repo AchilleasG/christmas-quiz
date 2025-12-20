@@ -368,12 +368,7 @@
         img.alt = "Υλικό ερώτησης";
         mediaEl.appendChild(img);
       });
-      (q.audio || []).forEach(src => {
-        const audio = document.createElement("audio");
-        audio.controls = true;
-        audio.src = src;
-        mediaEl.appendChild(audio);
-      });
+      // Audio playback is presenter-only; players do not get audio controls.
     }
 
     function renderAnswerArea(q) {
