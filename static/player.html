@@ -101,6 +101,7 @@
     let lastQuestionId = null;
     let answerResults = {};
     let answerValues = {};
+    let scoreRevealShown = false;
 
     const statusEl = document.getElementById("status");
     const playerNameInput = document.getElementById("player-name");
@@ -303,21 +304,10 @@
       introCard.style.display = "none";
       if (!latestState.question) {
         questionCard.style.display = "none";
-        // Show scores only once quiz flow is done
-        if (latestState.status === "finished" && latestState.scores_revealed) {
-          scoreCard.style.display = "block";
-          renderScoreboard();
-        } else {
-          scoreCard.style.display = "none";
-        }
+        handleScoreReveal();
         return;
       }
-      if (latestState.status === "finished" && latestState.scores_revealed) {
-        scoreCard.style.display = "block";
-        renderScoreboard();
-      } else {
-        scoreCard.style.display = "none";
-      }
+      handleScoreReveal();
       const q = latestState.question;
       const renderKey = `${q.id}-${q.revealed ? "revealed" : "open"}`;
       const mediaKey = `${q.id}-${(q.images || []).join(",")}-${(q.audio || []).join(",")}`;
@@ -358,6 +348,23 @@
           </div>`;
         })
         .join("");
+    }
+
+    function handleScoreReveal() {
+      const canShow = latestState?.status === "finished" && latestState?.scores_revealed;
+      if (canShow) {
+        scoreCard.style.display = "block";
+        if (!scoreRevealShown) {
+          scoreRevealShown = true;
+          scoreCard.classList.add("score-reveal");
+          setTimeout(() => scoreCard.classList.remove("score-reveal"), 650);
+        }
+        renderScoreboard();
+      } else {
+        scoreCard.style.display = "none";
+        scoreCard.classList.remove("score-reveal");
+        scoreRevealShown = false;
+      }
     }
 
     function renderMedia(q) {

@@ -18,6 +18,8 @@
         <div class="progress-chip" id="question-progress">Ερώτηση — / —</div>
       </div>
       <div class="chip chip--hollow" id="session-label">Σύνδεση...</div>
+      <button class="chip" id="reveal-scores-btn" style="display:none;">Αποκάλυψη βαθμολογίας</button>
+      <div class="chip chip--hollow" id="scores-status" style="display:none;"></div>
     </header>
 
     <main class="presenter-stage">
@@ -57,6 +59,8 @@
     const optionsEl = document.getElementById("options");
     const answerReveal = document.getElementById("answer-reveal");
     const roster = document.getElementById("roster");
+    const revealScoresBtn = document.getElementById("reveal-scores-btn");
+    const scoresStatus = document.getElementById("scores-status");
     let socket;
     let latestState = null;
     let answerValues = {};
@@ -110,12 +114,46 @@
     }
     connect();
 
+    async function revealScores() {
+      if (!sessionId) return;
+      revealScoresBtn.disabled = true;
+      revealScoresBtn.textContent = "Αποκάλυψη...";
+      try {
+        const res = await fetch(`/admin/sessions/${sessionId}/reveal_scores?reveal=true`, { method: "POST" });
+        if (!res.ok) {
+          scoresStatus.style.display = "inline-flex";
+          scoresStatus.textContent = "Αποτυχία αποκάλυψης βαθμολογίας";
+        }
+      } catch {
+        scoresStatus.style.display = "inline-flex";
+        scoresStatus.textContent = "Αποτυχία αποκάλυψης βαθμολογίας";
+      } finally {
+        revealScoresBtn.disabled = false;
+        revealScoresBtn.textContent = "Αποκάλυψη βαθμολογίας";
+      }
+    }
+
+    revealScoresBtn.onclick = revealScores;
+
+    function updateScoresControls(state) {
+      const finished = state?.status === "finished";
+      const revealed = !!state?.scores_revealed;
+      revealScoresBtn.style.display = finished && !revealed ? "inline-flex" : "none";
+      if (finished) {
+        scoresStatus.style.display = "inline-flex";
+        scoresStatus.textContent = revealed ? "Βαθμολογίες αποκαλύφθηκαν" : "Βαθμολογίες κρυφές";
+      } else {
+        scoresStatus.style.display = "none";
+      }
+    }
+
     function renderState() {
       if (!latestState) {
         introCard.style.display = "none";
         questionCard.style.display = "none";
         return;
       }
+      updateScoresControls(latestState);
       if (quizMeta.count === null && sessionId) {
         quizMeta = loadQuizMeta();
       }
@@ -143,6 +181,7 @@
       introCard.style.display = "none";
       if (!latestState.question) {
         questionCard.style.display = "none";
+        updateScoresControls(latestState);
         return;
       }
       updateHeaderProgress(latestState.active_question_index);
@@ -156,6 +195,7 @@
       }
       renderOptions(q);
       renderReveal(q);
+      updateScoresControls(latestState);
     }
 
     function updateHeaderProgress(activeIndex) {

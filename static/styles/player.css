@@ -642,6 +642,9 @@ select:focus {
   flex-direction: column;
   gap: 8px;
   margin-top: 8px;
+  max-height: 50vh;
+  overflow-y: auto;
+  padding-right: 4px;
 }
 
 .score-row {
@@ -672,6 +675,21 @@ select:focus {
 .score-value {
   font-weight: 700;
   color: var(--forest);
+}
+
+.score-reveal {
+  animation: score-pop 520ms ease-out;
+}
+
+@keyframes score-pop {
+  0% {
+    opacity: 0;
+    transform: translateY(12px) scale(0.98);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 .help-text {
