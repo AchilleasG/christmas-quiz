@@ -40,6 +40,11 @@
         <div class="options" id="options"></div>
         <div class="muted" id="answer-reveal"></div>
       </div>
+
+      <div class="stage-card" id="score-card" style="display:none;">
+        <div class="question-text">Βαθμολογίες</div>
+        <div class="scoreboard" id="scoreboard"></div>
+      </div>
     </main>
   </div>
 
@@ -59,6 +64,9 @@
     const optionsEl = document.getElementById("options");
     const answerReveal = document.getElementById("answer-reveal");
     const roster = document.getElementById("roster");
+    const scoreboardEl = document.getElementById("scoreboard");
+    const scoreCard = document.getElementById("score-card");
+    let scoreRevealShown = false;
     const revealScoresBtn = document.getElementById("reveal-scores-btn");
     const scoresStatus = document.getElementById("scores-status");
     let socket;
@@ -151,6 +159,7 @@
       if (!latestState) {
         introCard.style.display = "none";
         questionCard.style.display = "none";
+        scoreCard.style.display = "none";
         return;
       }
       updateScoresControls(latestState);
@@ -182,6 +191,7 @@
       if (!latestState.question) {
         questionCard.style.display = "none";
         updateScoresControls(latestState);
+        handleScoreReveal();
         return;
       }
       updateHeaderProgress(latestState.active_question_index);
@@ -196,6 +206,7 @@
       renderOptions(q);
       renderReveal(q);
       updateScoresControls(latestState);
+      handleScoreReveal();
     }
 
     function updateHeaderProgress(activeIndex) {
@@ -342,6 +353,42 @@
           return `<div class="roster-chip ${answered ? "answered" : ""}">${p.name || "Παίκτης"}</div>`;
         })
         .join("");
+    }
+
+    function renderScoreboard() {
+      const players = latestState?.players || [];
+      scoreboardEl.innerHTML = players
+        .slice()
+        .sort((a, b) => (b.score || 0) - (a.score || 0))
+        .map((p, idx) => {
+          const disconnected = !p.connected ? '<div class="score-note">Αποσυνδεδεμένος</div>' : "";
+          return `<div class="score-row">
+            <div class="score-rank">#${idx + 1}</div>
+            <div>
+              <div class="score-name">${p.name || "Παίκτης"}</div>
+              ${disconnected}
+            </div>
+            <div class="score-value">${p.score || 0} βαθμοί</div>
+          </div>`;
+        })
+        .join("");
+    }
+
+    function handleScoreReveal() {
+      const canShow = latestState?.status === "finished" && latestState?.scores_revealed;
+      if (canShow) {
+        scoreCard.style.display = "block";
+        if (!scoreRevealShown) {
+          scoreRevealShown = true;
+          scoreCard.classList.add("score-reveal");
+          setTimeout(() => scoreCard.classList.remove("score-reveal"), 650);
+        }
+        renderScoreboard();
+      } else {
+        scoreCard.style.display = "none";
+        scoreCard.classList.remove("score-reveal");
+        scoreRevealShown = false;
+      }
     }
 
     function loadQuizMeta() {
